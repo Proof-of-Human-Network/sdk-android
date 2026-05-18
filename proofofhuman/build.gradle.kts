@@ -38,6 +38,20 @@ tasks.test {
     useJUnitPlatform()
 }
 
+// ── GPG signing ────────────────────────────────────────────────────────────────
+// Reads signing.key (base64-encoded ASCII armor) + signing.password from
+// gradle.properties or ~/.gradle/gradle.properties.
+
+signing {
+    val rawKey  = project.findProperty("signing.key")      as String?
+    val pass    = project.findProperty("signing.password") as String?
+    if (rawKey != null && pass != null) {
+        val key = if (rawKey.trimStart().startsWith("-----")) rawKey
+                  else String(java.util.Base64.getDecoder().decode(rawKey.trim()))
+        useInMemoryPgpKeys(key, pass)
+    }
+}
+
 mavenPublishing {
     publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL, automaticRelease = true)
     signAllPublications()
