@@ -1,4 +1,5 @@
 import com.vanniktech.maven.publish.SonatypeHost
+import java.util.Base64
 
 plugins {
     kotlin("jvm")
@@ -47,7 +48,7 @@ signing {
     val pass    = project.findProperty("signing.password") as String?
     if (rawKey != null && pass != null) {
         val key = if (rawKey.trimStart().startsWith("-----")) rawKey
-                  else String(java.util.Base64.getDecoder().decode(rawKey.trim()))
+                  else String(Base64.getDecoder().decode(rawKey.trim()))
         useInMemoryPgpKeys(key, pass)
     }
 }
