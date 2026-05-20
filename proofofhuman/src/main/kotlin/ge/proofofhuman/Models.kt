@@ -24,6 +24,14 @@ data class PollOptions(
     val onProgress: ((JobStatus) -> Unit)? = null,
 )
 
+/** Options for [POHClient.pollBrainVerdict]. */
+data class BrainPollOptions(
+    /** Milliseconds between brain verdict checks. Default 1500. */
+    val intervalMs: Long = 1_500L,
+    /** Maximum total wait in milliseconds before throwing. Default 30 s. */
+    val timeoutMs: Long = 30_000L,
+)
+
 // ── Per-method result ──────────────────────────────────────────────────────────
 
 /** Outcome of one signal-method evaluation for a wallet address. */
@@ -83,7 +91,8 @@ data class JobStatus(
 data class BrainVerdict(
     /** `pending` | `done` | `error` | `not_found` */
     val status: String,
-    val verdict: Boolean?,
+    /** `"HUMAN"` | `"AI"` | `"UNCERTAIN"` — null while pending */
+    val verdict: String?,
     val confidence: Double?,
     val reasoning: String?,
     val signals: List<MethodResult>?,
@@ -103,6 +112,14 @@ data class Method(
     val voteCount: Int?,
     @SerializedName("chainId") val chainId: String?,
     val expression: String?,
+)
+
+// ── Scan + verdict combined ────────────────────────────────────────────────────
+
+/** Combined result of [POHClient.scanAndVerdict]. */
+data class ScanWithVerdict(
+    val scan:    ScanResponse,
+    val verdict: BrainVerdict,
 )
 
 // ── Pricing ────────────────────────────────────────────────────────────────────

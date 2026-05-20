@@ -1,6 +1,6 @@
 # proofofhuman-android
 
-Android / JVM SDK for the [Proof of Human](https://proofofhuman.work) API.
+Android / JVM SDK for the [Proof of Human](https://proofofhuman.ge) API.
 
 ## Installation
 
@@ -79,7 +79,7 @@ println("$${price.total} for ${price.count} addresses")
 
 ```kotlin
 val poh = POHClient(
-    baseUrl   = "https://api.proofofhuman.work",  // default
+    baseUrl   = "https://proofofhuman.ge",  // default
     apiKey    = "sk-...",                          // paid tier
     timeoutMs = 60_000L,                           // per-request timeout
 )

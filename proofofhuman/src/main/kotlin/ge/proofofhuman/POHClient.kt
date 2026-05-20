@@ -44,7 +44,7 @@ import kotlin.coroutines.resumeWithException
  * @param timeoutMs Per-request HTTP timeout in milliseconds.
  */
 class POHClient(
-    val baseUrl: String = "https://api.proofofhuman.com",
+    val baseUrl: String = "https://proofofhuman.ge",
     val apiKey: String? = null,
     val timeoutMs: Long = 30_000L,
 ) {
@@ -190,6 +190,40 @@ class POHClient(
      */
     suspend fun getBrainVerdict(brainKey: String): BrainVerdict =
         request("GET", "/checker/brain/$brainKey", BrainVerdict::class.java)
+
+    /**
+     * Poll the brain verdict until `status` leaves `"pending"`, then return it.
+     * @throws POHException.JobTimedOutException if [BrainPollOptions.timeoutMs] elapses.
+     */
+    suspend fun pollBrainVerdict(
+        brainKey: String,
+        options: BrainPollOptions = BrainPollOptions(),
+    ): BrainVerdict {
+        val deadline = System.currentTimeMillis() + options.timeoutMs
+        while (true) {
+            val v = getBrainVerdict(brainKey)
+            if (v.status != "pending") return v
+            if (System.currentTimeMillis() + options.intervalMs >= deadline) {
+                throw POHException.JobTimedOutException(brainKey, v.status)
+            }
+            delay(options.intervalMs)
+        }
+    }
+
+    /**
+     * Convenience: scan a single address and wait for the AI brain verdict.
+     * Returns both the raw [ScanResponse] evidence and the resolved [BrainVerdict].
+     */
+    suspend fun scanAndVerdict(
+        input: String,
+        scanOptions: ScanOptions = ScanOptions(),
+        brainOptions: BrainPollOptions = BrainPollOptions(),
+    ): ScanWithVerdict {
+        val scan = scan(input, scanOptions)
+        val verdict = scan.brainKey?.let { pollBrainVerdict(it, brainOptions) }
+            ?: BrainVerdict(status = "not_found", verdict = null, confidence = null, reasoning = null, signals = null)
+        return ScanWithVerdict(scan = scan, verdict = verdict)
+    }
 
     /** Fetch all registered signal verification methods. */
     suspend fun getMethods(): List<Method> =
