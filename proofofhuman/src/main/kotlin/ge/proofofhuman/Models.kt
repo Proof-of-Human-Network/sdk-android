@@ -134,5 +134,7 @@ data class PricingResponse(
     val count: Int,
     val perAddress: Double,
     val total: Double,
+    /** Payment currency — `"USDC/USDT"` */
+    val currency: String,
     val tiers: List<PricingTier>,
 )

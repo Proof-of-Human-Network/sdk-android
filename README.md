@@ -70,9 +70,12 @@ methods.forEach { println("${it.id} (${it.type}) — score ${it.score}") }
 
 ## Pricing
 
+Flat rate: **$1 per 1,000 scans** ($0.001/scan), paid in USDC or USDT on Solana. First 100 scans per wallet are free.
+
 ```kotlin
-val price = poh.getPricing(count = 100)
-println("$${price.total} for ${price.count} addresses")
+val price = poh.getPricing(count = 1000)
+// price.perAddress == 0.001, price.total == 1000000 (raw USDC/USDT), price.currency == "USDC/USDT"
+println("${price.currency}: $${price.total / 1_000_000.0} for ${price.count} scans")
 ```
 
 ## Client options
