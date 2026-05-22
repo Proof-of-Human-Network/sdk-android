@@ -167,11 +167,11 @@ class POHClientTest {
     @Test
     fun `getBrainVerdict parses done verdict`() = runTest {
         server.enqueue(MockResponse().setBody("""
-            {"status":"done","verdict":true,"confidence":0.87,"reasoning":"Strong on-chain activity.","signals":[]}
+            {"status":"done","verdict":"HUMAN","confidence":0.87,"reasoning":"Strong on-chain activity.","signals":[]}
         """.trimIndent()))
         val v = client.getBrainVerdict("0xabc")
         assertEquals("done", v.status)
-        assertTrue(v.verdict == true)
+        assertEquals("HUMAN", v.verdict)
         assertEquals(0.87, v.confidence)
         assertNotNull(v.reasoning)
     }
