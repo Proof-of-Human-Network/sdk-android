@@ -45,6 +45,18 @@ data class MethodResult(
     val error: String?,
 )
 
+// ── OFAC sanctions ─────────────────────────────────────────────────────────────
+
+/** Present in [ScanResponse.ofac] when the address is on the OFAC SDN list. */
+data class OfacMatch(
+    val name:           String,
+    val program:        String,
+    val chainCode:      String,
+    /** `"direct"` = scanned address itself; `"counterparty"` = 1-hop tx partner. */
+    val type:           String,
+    val matchedAddress: String,
+)
+
 // ── Single-address scan ────────────────────────────────────────────────────────
 
 /** Response from [POHClient.scan] (single address, synchronous). */
@@ -56,6 +68,8 @@ data class ScanResponse(
     /** Pass to [POHClient.getBrainVerdict] once ready. */
     val brainKey: String?,
     val freeScansLeft: Int?,
+    /** Set when the address (or a direct counterparty) is on the OFAC SDN list. */
+    val ofac: OfacMatch? = null,
 )
 
 // ── Bulk scan job ──────────────────────────────────────────────────────────────

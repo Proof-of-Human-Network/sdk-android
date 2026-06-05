@@ -24,31 +24,43 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+/** Default public network nodes used when no baseUrl/nodes is provided. */
+val DEFAULT_NODES: List<String> = listOf(
+    "https://bootnode.proofofhuman.ge",
+    "https://proofofhuman.ge",
+    "https://poh.assetux.com",
+)
+
 /**
  * Client for the Proof of Human checker API.
  *
  * ```kotlin
- * val poh = POHClient(apiKey = "your-key")
+ * // Single node (legacy):
+ * val poh = POHClient(baseUrl = "https://proofofhuman.ge", apiKey = "your-key")
+ *
+ * // Network mode — auto-picks fastest live node:
+ * val poh = POHClient(nodes = listOf(
+ *     "https://bootnode.proofofhuman.ge",
+ *     "https://proofofhuman.ge"
+ * ))
  *
  * // Single address
  * val scan = poh.scan("0xabc...")
  * val verdict = poh.getBrainVerdict(scan.brainKey!!)
- *
- * // Bulk — stream progress
- * val ref = poh.scanBulk(listOf("0xaaa...", "0xbbb..."))
- * poh.watchJob(ref.jobId).collect { snapshot -> println("${snapshot.percent}%") }
  * ```
  *
- * @param baseUrl  API base URL without trailing slash.
- * @param apiKey   Optional API key sent as `x-api-key` header.
+ * @param baseUrl   Single-node base URL (legacy). Takes precedence over [nodes].
+ * @param nodes     List of network node URLs to probe; first alive wins.
+ *                  Defaults to [DEFAULT_NODES] when both [baseUrl] and [nodes] are null.
+ * @param apiKey    Optional API key sent as `x-api-key` header.
  * @param timeoutMs Per-request HTTP timeout in milliseconds.
  */
 class POHClient(
-    val baseUrl: String = "https://proofofhuman.ge",
+    baseUrl: String? = null,
+    nodes: List<String>? = null,
     val apiKey: String? = null,
     val timeoutMs: Long = 30_000L,
 ) {
-
     private val json: MediaType = "application/json; charset=utf-8".toMediaType()
 
     private val http: OkHttpClient = OkHttpClient.Builder()
@@ -59,6 +71,41 @@ class POHClient(
 
     private val gson: Gson = GsonBuilder().create()
 
+    private val _nodes: List<String> = when {
+        baseUrl != null -> listOf(baseUrl.trimEnd('/'))
+        nodes   != null -> nodes.map { it.trimEnd('/') }
+        else            -> DEFAULT_NODES
+    }
+
+    /** URL of the selected node — resolved lazily on first use. */
+    private var _resolvedUrl: String? = if (baseUrl != null) baseUrl.trimEnd('/') else null
+
+    /** Probe [url]/healthz with a short timeout; returns true on success. */
+    private suspend fun probeNode(url: String): Boolean {
+        val req = Request.Builder()
+            .url("$url/healthz")
+            .head()
+            .build()
+        return try {
+            val res = http.newCall(req).await()
+            res.code < 500
+        } catch (_: Exception) { false }
+    }
+
+    /** Try nodes in order; return the first one that responds. */
+    private suspend fun resolveNode(): String {
+        _resolvedUrl?.let { return it }
+        for (url in _nodes) {
+            if (probeNode(url)) { _resolvedUrl = url; return url }
+        }
+        // All nodes unreachable — fall back to first and let the real request fail naturally
+        _resolvedUrl = _nodes.first()
+        return _resolvedUrl!!
+    }
+
+    /** The URL of the currently selected node, or null before first request. */
+    val activeNode: String? get() = _resolvedUrl
+
     // ── Core HTTP helper ───────────────────────────────────────────────────────
 
     private suspend fun <T> request(
@@ -67,7 +114,7 @@ class POHClient(
         responseType: Type,
         body: Any? = null,
     ): T {
-        val url = baseUrl.trimEnd('/') + path
+        val url = resolveNode() + path
 
         val requestBody = when {
             body != null -> gson.toJson(body).toRequestBody(json)
