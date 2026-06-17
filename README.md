@@ -1,117 +1,238 @@
-# proofofhuman-android
+# Proof of Human — Android / JVM SDK
 
-Android / JVM SDK for the [Proof of Human](https://proofofhuman.ge) API.
+Kotlin coroutine-based client for the [Proof of Human](https://proofofhuman.ge) API.
+Scan wallet addresses for human-identity signals, query blockchain state, and sign/submit PoH transactions.
+
+---
 
 ## Installation
 
-Add the dependency to your `build.gradle.kts`:
-
+**Gradle (Kotlin DSL)**
 ```kotlin
 dependencies {
-    implementation("ge.proofofhuman:proofofhuman:1.0.0")
+    implementation("ge.proofofhuman:proofofhuman:1.3.0")
 }
 ```
 
-The library requires **Java 11** or higher and ships with OkHttp, Kotlin Coroutines, and Gson as transitive dependencies.
+**Gradle (Groovy)**
+```groovy
+dependencies {
+    implementation 'ge.proofofhuman:proofofhuman:1.3.0'
+}
+```
+
+**Maven**
+```xml
+<dependency>
+    <groupId>ge.proofofhuman</groupId>
+    <artifactId>proofofhuman</artifactId>
+    <version>1.3.0</version>
+</dependency>
+```
+
+Requires **Java 17+** and **Kotlin coroutines**.
+
+---
 
 ## Quick start
 
 ```kotlin
 import ge.proofofhuman.POHClient
+import ge.proofofhuman.ScanOptions
 
 val poh = POHClient(apiKey = "your-api-key")
 
-// Single address
-val scan = poh.scan("0xabc...")
-println(scan.brainKey)   // use with getBrainVerdict()
+// Scan a single address
+val scan = poh.scan("0xabc123...")
 
-// AI verdict
-val verdict = poh.getBrainVerdict(scan.brainKey!!)
-println(verdict.verdict)     // true = human, false = bot, null = inconclusive
-println(verdict.confidence)  // 0.0 – 1.0
+// Get the AI brain verdict (polls until ready)
+val verdict = poh.pollBrainVerdict(scan.brainKey!!)
+println("${verdict.verdict} (${verdict.confidence})")   // e.g. "HUMAN (0.93)"
+
+// One-shot convenience
+val result = poh.scanAndVerdict("0xabc123...")
+println(result.verdict.verdict)
 ```
 
-All methods are `suspend` — call them from a coroutine scope or `viewModelScope`.
-
-## Bulk scanning
-
+**Bulk scan**
 ```kotlin
-// Submit
-val ref = poh.scanBulk(listOf("0xaaa...", "0xbbb...", "0xccc..."))
+val job = poh.scanBulk(listOf("0xabc...", "0xdef...", "sol1..."))
+val done = poh.pollJob(job.jobId)           // blocks until complete
+done.results.forEach { println(it) }
+```
 
-// Stream progress with a Flow
+**Stream progress**
+```kotlin
 poh.watchJob(ref.jobId).collect { snapshot ->
     println("${snapshot.percent}% (${snapshot.done}/${snapshot.total})")
 }
-
-// Or block until done
-val done = poh.pollJob(ref.jobId, PollOptions(
-    intervalMs = 2_000L,
-    onProgress = { println("${it.percent}%") }
-))
-done.results.forEach { println("${it.input} → ${it.result}") }
 ```
 
-### Convenience: submit and wait in one call
+---
+
+## Natural language jobs
 
 ```kotlin
-val done = poh.scanAndWait(
-    inputs = listOf("0xaaa...", "0xbbb..."),
-    pollOptions = PollOptions(timeoutMs = 300_000L)
+import ge.proofofhuman.AskOptions
+
+// Block until the answer arrives
+val answer = poh.askAndWait(
+    "What does vitalik.eth write about on Paragraph?",
+    AskOptions(budget = 0.5, walletAddress = "poh1abc..."),
+)
+println(answer.nlResponse)
+println(answer.output)          // raw skill output as JsonElement
+
+// Or fire-and-poll manually
+val ref = poh.submitJob(
+    "What does vitalik.eth write about on Paragraph?",
+    AskOptions(budget = 0.5, walletAddress = "poh1abc..."),
+)
+val result = poh.pollJobResult(ref.jobId)
+```
+
+---
+
+## Wallet / blockchain
+
+```kotlin
+// Balance (in μPOH — divide by 1_000_000_000 for whole POH)
+val bal = poh.getBalance("poh1abc...")
+println("${bal.balance / 1_000_000_000.0} POH")
+
+// Nonce (current value; increment by 1 when building a tx)
+val nonceResp = poh.getNonce("poh1abc...")
+println("nonce: ${nonceResp.nonce}")
+
+// Transaction history
+val history = poh.getTransactionHistory("poh1abc...", limit = 20)
+history.entries.forEach { entry ->
+    println("${entry.txHash}  delta=${entry.delta}  label=${entry.label}")
+}
+
+// Pending mempool transactions
+val pending = poh.getPendingTransactions()
+println("${pending.count} pending txs")
+```
+
+---
+
+## Signing and transactions
+
+### 1. Generate a keypair
+
+```kotlin
+import ge.proofofhuman.POHSigning
+
+val keyPair = POHSigning.generateKeyPair()
+// keyPair.signingPrivateKey — PKCS8 PEM, keep secret
+// keyPair.signingPublicKey  — SPKI PEM, share with node
+```
+
+### 2. Register the public key with the node
+
+```kotlin
+val proof = POHSigning.createSigningProof(myAddress, keyPair.signingPrivateKey)
+poh.registerSigningKey(myAddress, keyPair.signingPublicKey, proof)
+```
+
+### 3. Build, sign, and submit a transaction
+
+```kotlin
+// Build an unsigned transfer (amountPoh is in whole POH units)
+val nonceResp = poh.getNonce(myAddress)
+val tx = POHSigning.buildTransfer(
+    from       = myAddress,
+    to         = recipientAddress,
+    amountPoh  = 5.0,                   // 5 POH = 5_000_000_000 μPOH
+    nonce      = nonceResp.nonce + 1,
+    fee        = 0L,
+    memo       = "payment",
+)
+
+// Sign with the keypair
+val signed = POHSigning.signTransaction(tx, keyPair)
+
+// Submit
+val result = poh.submitTransaction(signed)
+println("txHash: ${result.txHash}  queueSize: ${result.queueSize}")
+```
+
+### Convenience: one-call transfer
+
+```kotlin
+val result = poh.transfer(
+    from      = myAddress,
+    to        = recipientAddress,
+    amountPoh = 5.0,
+    keyPair   = keyPair,
+    memo      = "payment",
+)
+println("txHash: ${result.txHash}")
+```
+
+### Sign with explicit PEM strings
+
+```kotlin
+val signed = POHSigning.signTransaction(tx, privateKeyPem, publicKeyPem)
+```
+
+### Low-level: compute tx hash
+
+```kotlin
+val hash = POHSigning.computeTxHash(
+    from = myAddress, to = recipient,
+    amount = 5_000_000_000L, fee = 0L,
+    nonce = 42L, timestamp = System.currentTimeMillis(),
+    memo = "",
 )
 ```
 
-## Signal methods
+---
+
+## Node info
 
 ```kotlin
-val methods = poh.getMethods()
-methods.forEach { println("${it.id} (${it.type}) — score ${it.score}") }
+// Miner details
+val info = poh.getMinerInfo()
+println("miner=${info.minerAddress}  gasPrice=${info.gasPrice}  queue=${info.queueLength}")
+
+// All available skills
+val skills = poh.listSkills()
+skills.forEach { println("${it.id}  ${it.description}") }
+
+// Basic node health
+val node = poh.getNodeInfo()
+println("node=${node.nodeId}  version=${node.version}  peers=${node.peers}")
 ```
 
-## Pricing
+---
 
-Flat rate: **$1 per 1,000 scans** ($0.001/scan), paid in USDC or USDT on Solana. First 100 scans per wallet are free.
+## Multi-node setup
 
-```kotlin
-val price = poh.getPricing(count = 1000)
-// price.perAddress == 0.001, price.total == 1000000 (raw USDC/USDT), price.currency == "USDC/USDT"
-println("${price.currency}: $${price.total / 1_000_000.0} for ${price.count} scans")
-```
-
-## Client options
+The client probes nodes in order and uses the first one that responds. This happens
+automatically on the first request.
 
 ```kotlin
 val poh = POHClient(
-    baseUrl   = "https://proofofhuman.ge",  // default
-    apiKey    = "sk-...",                          // paid tier
-    timeoutMs = 60_000L,                           // per-request timeout
+    nodes = listOf(
+        "https://bootnode.proofofhuman.ge",
+        "https://proofofhuman.ge",
+        "https://poh.assetux.com",
+    ),
+    apiKey = "your-api-key",
 )
+
+// Which node is active after the first request?
+println(poh.activeNode)
 ```
 
-## Scan options
+The default node list (used when neither `baseUrl` nor `nodes` is supplied) is:
+- `https://bootnode.proofofhuman.ge`
+- `https://proofofhuman.ge`
+- `https://poh.assetux.com`
 
-```kotlin
-val scan = poh.scan(
-    input = "0xabc...",
-    options = ScanOptions(
-        chainIds      = listOf("1", "137"),   // restrict to specific chains
-        txHash        = "0xdeadbeef...",       // verify a specific transaction
-        walletAddress = "YourWallet...",       // free-tier tracking address
-    )
-)
-```
-
-## Poll options
-
-```kotlin
-val opts = PollOptions(
-    intervalMs  = 2_000L,           // 2 s between polls
-    timeoutMs   = 300_000L,         // 5 min total timeout
-    onProgress  = { job ->
-        println("${job.percent}% — ${job.done}/${job.total} done")
-    }
-)
-```
+---
 
 ## Error handling
 
@@ -139,25 +260,7 @@ try {
 | `EmptyInputsException` | `scanBulk` called with empty list |
 | `DecodingException(cause)` | Response JSON parse failure |
 
-## Android integration example
-
-```kotlin
-class WalletViewModel : ViewModel() {
-    private val poh = POHClient(apiKey = BuildConfig.POH_API_KEY)
-
-    fun verify(address: String) = viewModelScope.launch {
-        try {
-            val scan    = poh.scan(address)
-            val verdict = poh.getBrainVerdict(scan.brainKey!!)
-            _uiState.value = if (verdict.verdict == true) UiState.Human else UiState.Bot
-        } catch (e: POHException) {
-            _uiState.value = UiState.Error(e.message)
-        }
-    }
-}
-```
-
-Store your API key in `local.properties` and expose it via `BuildConfig` — never hardcode it in source.
+---
 
 ## Publishing to Maven Central
 
@@ -165,7 +268,10 @@ Store your API key in `local.properties` and expose it via `BuildConfig` — nev
 ./gradlew publishToMavenCentral
 ```
 
-Requires `signingInMemoryKey`, `signingInMemoryKeyPassword`, `mavenCentralUsername`, and `mavenCentralPassword` in `~/.gradle/gradle.properties`.
+Requires `signing.key`, `signing.password`, `mavenCentralUsername`, and `mavenCentralPassword`
+in `~/.gradle/gradle.properties`.
+
+---
 
 ## License
 

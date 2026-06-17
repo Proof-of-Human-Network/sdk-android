@@ -283,7 +283,191 @@ class POHClient(
     suspend fun getPricing(count: Int = 1): PricingResponse =
         request("GET", "/checker/pricing?count=$count", PricingResponse::class.java)
 
+    /**
+     * Submit a natural language question to the PoH network.
+     * Automatically routes the question to the best available skill.
+     *
+     * Returns immediately with a [AskJobRef]; poll with [pollJobResult] or use [askAndWait].
+     */
+    suspend fun submitJob(question: String, options: AskOptions = AskOptions()): AskJobRef {
+        val maxBudget = (options.budget * 1_000_000_000).toLong()
+
+        // 1. Route to skill
+        val routeBody: Map<String, Any?> = buildMap {
+            put("message", question)
+            put("budget", maxBudget)
+        }
+        val routeRaw: com.google.gson.JsonObject = request("POST", "/chat/route", com.google.gson.JsonObject::class.java, routeBody)
+        val type = routeRaw.get("type")?.asString ?: "chat"
+        val skillId = if (routeRaw.has("skillId") && !routeRaw.get("skillId").isJsonNull) routeRaw.get("skillId").asString else null
+        if (type != "skill" || skillId == null) {
+            throw POHException.HttpException(422, "No skill available for: \"$question\"")
+        }
+        val skillInput = routeRaw.get("input") ?: com.google.gson.JsonObject()
+
+        // 2. Submit job
+        val jobBody: Map<String, Any?> = buildMap {
+            put("type", "skill")
+            put("skillId", skillId)
+            put("payload", skillInput)
+            put("maxBudget", maxBudget)
+            options.walletAddress?.let { put("requesterAddress", it) }
+        }
+        return request("POST", "/job", AskJobRef::class.java, jobBody)
+    }
+
+    /** Fetch the current status of a job without the full result. */
+    suspend fun getJobStatus(jobId: String): AskJobStatus =
+        request("GET", "/job/$jobId/status", AskJobStatus::class.java)
+
+    /** Fetch the result of a completed job. Returns status="computing" if not ready yet. */
+    suspend fun getJobResult(jobId: String): AskJobResult {
+        val raw: com.google.gson.JsonObject = request("GET", "/job/$jobId/result", com.google.gson.JsonObject::class.java)
+        val status = raw.get("status")?.asString ?: "computing"
+        val profile = if (raw.has("profile") && !raw.get("profile").isJsonNull) raw.getAsJsonObject("profile") else null
+        val output = profile?.get("skillOutput")
+        val nlResponse = if (profile?.has("nlResponse") == true && !profile.get("nlResponse").isJsonNull)
+            profile.get("nlResponse").asString else null
+        val skillId = profile?.get("skillId")?.asString
+        val tokensUsed = profile?.get("tokensUsed")?.asInt
+        return AskJobResult(
+            jobId = raw.get("jobId")?.asString ?: jobId,
+            status = status,
+            output = output,
+            nlResponse = nlResponse,
+            skillId = skillId,
+            tokensUsed = tokensUsed,
+            error = if (raw.has("error") && !raw.get("error").isJsonNull) raw.get("error").asString else null,
+        )
+    }
+
+    /**
+     * Poll a job until it reaches terminal state (`done` or `error`).
+     * @throws [POHException.JobTimedOutException] if [PollOptions.timeoutMs] elapses.
+     */
+    suspend fun pollJobResult(
+        jobId: String,
+        options: PollOptions = PollOptions(),
+    ): AskJobResult {
+        val deadline = System.currentTimeMillis() + options.timeoutMs
+        while (true) {
+            val status = getJobStatus(jobId)
+            if (status.status == "done" || status.status == "error") {
+                return getJobResult(jobId)
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                throw POHException.JobTimedOutException(jobId, status.status)
+            }
+            delay(options.intervalMs)
+        }
+    }
+
+    /**
+     * Convenience: submit a question and wait for the answer in one call.
+     *
+     * ```kotlin
+     * val result = poh.askAndWait(
+     *     "What does vitalik.eth write about on Paragraph?",
+     *     AskOptions(budget = 0.5, walletAddress = "poh..."),
+     * )
+     * println(result.output)
+     * ```
+     */
+    suspend fun askAndWait(
+        question: String,
+        askOptions: AskOptions = AskOptions(),
+        pollOptions: PollOptions = PollOptions(),
+    ): AskJobResult {
+        val ref = submitJob(question, askOptions)
+        return pollJobResult(ref.jobId, pollOptions)
+    }
+
+    // ── Node info ──────────────────────────────────────────────────────────────
+
+    /**
+     * Fetch metadata about the currently connected node.
+     * Returns node ID, version, wallet address, reputation, and peer count.
+     */
+    suspend fun getNodeInfo(): NodeInfo =
+        request("GET", "/healthz", NodeInfo::class.java)
+
+    /**
+     * List all skills available on the connected node.
+     */
+    suspend fun listSkills(): List<Skill> =
+        request(
+            "GET", "/api/skills",
+            object : com.google.gson.reflect.TypeToken<List<Skill>>() {}.type,
+        )
+
+    // ── Wallet / blockchain ────────────────────────────────────────────────────
+
+    /** Fetch the POH balance for [address]. Balance is in μPOH (1 POH = 1_000_000_000 μPOH). */
+    suspend fun getBalance(address: String): WalletBalance =
+        request("GET", "/api/wallet/balance?address=${encode(address)}", WalletBalance::class.java)
+
+    /** Fetch the current nonce for [address]. Increment by 1 when building a transaction. */
+    suspend fun getNonce(address: String): AccountNonce =
+        request("GET", "/api/wallet/nonce?address=${encode(address)}", AccountNonce::class.java)
+
+    /** Fetch the transaction history for [address]. */
+    suspend fun getTransactionHistory(address: String, limit: Int = 30): TxHistoryResult =
+        request("GET", "/api/wallet/history?address=${encode(address)}&limit=$limit", TxHistoryResult::class.java)
+
+    /** Fetch all transactions for [address]. */
+    suspend fun getTransactions(address: String): com.google.gson.JsonObject =
+        request("GET", "/api/wallet/transactions?address=${encode(address)}", com.google.gson.JsonObject::class.java)
+
+    /** Fetch all currently pending transactions in the mempool. */
+    suspend fun getPendingTransactions(): PendingTxResult =
+        request("GET", "/api/tx/pending", PendingTxResult::class.java)
+
+    /** Submit a pre-signed [PohTx] to the network. */
+    suspend fun submitTransaction(tx: PohTx): TxSubmitResult =
+        request("POST", "/api/tx/submit", TxSubmitResult::class.java, tx)
+
+    /**
+     * Register a signing key for [address] on the node.
+     * The [proof] must be `POHSigning.createSigningProof(address, privateKeyPem)`.
+     */
+    suspend fun registerSigningKey(address: String, signingPublicKey: String, proof: String): com.google.gson.JsonObject {
+        val body = mapOf("address" to address, "signingPublicKey" to signingPublicKey, "proof" to proof)
+        return request("POST", "/api/wallet/register-key", com.google.gson.JsonObject::class.java, body)
+    }
+
+    /** Fetch detailed information about the connected miner node. */
+    suspend fun getMinerInfo(): MinerInfo =
+        request("GET", "/api/miner/info", MinerInfo::class.java)
+
+    /**
+     * Convenience: build, sign, and submit a POH transfer in one call.
+     *
+     * ```kotlin
+     * val result = poh.transfer(
+     *     from      = myAddress,
+     *     to        = recipientAddress,
+     *     amountPoh = 5.0,
+     *     keyPair   = myKeyPair,
+     * )
+     * ```
+     */
+    suspend fun transfer(
+        from: String,
+        to: String,
+        amountPoh: Double,
+        keyPair: KeyPair,
+        fee: Long = 0L,
+        memo: String = "",
+    ): TxSubmitResult {
+        val nonceResp = getNonce(from)
+        val tx        = POHSigning.buildTransfer(from, to, amountPoh, nonceResp.nonce + 1, fee, memo)
+        val signed    = POHSigning.signTransaction(tx, keyPair)
+        return submitTransaction(signed)
+    }
+
     // ── Internal helpers ───────────────────────────────────────────────────────
+
+    private fun encode(s: String): String = java.net.URLEncoder.encode(s, "UTF-8")
 
     private fun buildCheckerBody(inputs: List<String>, options: ScanOptions): Map<String, Any?> =
         buildMap {
