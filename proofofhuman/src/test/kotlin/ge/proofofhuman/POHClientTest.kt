@@ -190,4 +190,200 @@ class POHClientTest {
         assertEquals("evm", methods.first().type)
         assertEquals("1", methods.first().chainId)
     }
+
+    // ── getNodeInfo ───────────────────────────────────────────────────────────
+
+    @Test
+    fun `getNodeInfo parses node metadata`() = runTest {
+        server.enqueue(MockResponse().setBody("""
+            {"status":"ok","nodeId":"node-42","version":"1.2.0","walletAddress":"poh123","peers":3}
+        """.trimIndent()))
+
+        val info = client.getNodeInfo()
+        assertEquals("node-42", info.nodeId)
+        assertEquals("1.2.0", info.version)
+        assertEquals(3, info.peers)
+    }
+
+    // ── listSkills ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `listSkills parses skill array`() = runTest {
+        server.enqueue(MockResponse().setBody("""
+            [{"id":"sk-1","description":"Summariser","triggers":["summarise"],"version":"1.0"}]
+        """.trimIndent()))
+
+        val skills = client.listSkills()
+        assertEquals(1, skills.size)
+        assertEquals("sk-1", skills.first().id)
+        assertEquals("Summariser", skills.first().description)
+    }
+
+    // ── getMinerInfo ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `getMinerInfo parses miner metadata`() = runTest {
+        server.enqueue(MockResponse().setBody("""
+            {"minerAddress":"poh-miner-1","gasPrice":1000,"model":"llama-3","queueLength":2,"reputation":4.5}
+        """.trimIndent()))
+
+        val info = client.getMinerInfo()
+        assertEquals("poh-miner-1", info.minerAddress)
+        assertEquals("llama-3", info.model)
+        assertEquals(2, info.queueLength)
+    }
+
+    // ── getBalance ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `getBalance returns address and μPOH balance`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"address":"poh123","balance":5000000000}"""))
+
+        val bal = client.getBalance("poh123")
+        assertEquals("poh123", bal.address)
+        assertEquals(5_000_000_000L, bal.balance)
+    }
+
+    // ── getNonce ──────────────────────────────────────────────────────────────
+
+    @Test
+    fun `getNonce returns current nonce`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"address":"poh123","nonce":7}"""))
+
+        val n = client.getNonce("poh123")
+        assertEquals("poh123", n.address)
+        assertEquals(7L, n.nonce)
+    }
+
+    // ── getTransactionHistory ─────────────────────────────────────────────────
+
+    @Test
+    fun `getTransactionHistory returns entries`() = runTest {
+        server.enqueue(MockResponse().setBody("""
+            {"address":"poh123","entries":[
+                {"height":100,"delta":1000000000,"txHash":"abc","ts":1700000000,"label":"transfer"}
+            ]}
+        """.trimIndent()))
+
+        val hist = client.getTransactionHistory("poh123")
+        assertEquals("poh123", hist.address)
+        assertEquals(1, hist.entries.size)
+        assertEquals(1_000_000_000L, hist.entries.first().delta)
+        assertEquals("transfer", hist.entries.first().label)
+    }
+
+    // ── getPendingTransactions ────────────────────────────────────────────────
+
+    @Test
+    fun `getPendingTransactions returns count`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"pending":[],"count":0}"""))
+
+        val p = client.getPendingTransactions()
+        assertEquals(0, p.count)
+    }
+
+    // ── submitTransaction ─────────────────────────────────────────────────────
+
+    @Test
+    fun `submitTransaction posts signed tx and returns txHash`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"ok":true,"txHash":"cafebabe","queueSize":1}"""))
+
+        val tx = PohTx(
+            from = "pohA", to = "pohB", amount = 1_000_000_000L, fee = 0L,
+            nonce = 1L, timestamp = System.currentTimeMillis(), memo = "",
+            txHash = "cafebabe", signature = "sig", signingPublicKey = "pub",
+        )
+        val result = client.submitTransaction(tx)
+        assertEquals("cafebabe", result.txHash)
+        assertTrue(result.ok)
+    }
+
+    // ── registerSigningKey ────────────────────────────────────────────────────
+
+    @Test
+    fun `registerSigningKey posts key and proof`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"success":true}"""))
+
+        val body = client.registerSigningKey("pohA", "pubkey-pem", "proof-b64")
+        assertNotNull(body)
+        val req = server.takeRequest()
+        assertEquals("/api/wallet/register-key", req.path)
+        assertTrue(req.body.readUtf8().contains("signingPublicKey"))
+    }
+
+    // ── submitJob ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `submitJob routes to skill then creates job`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"type":"skill","skillId":"sk-sum","input":{}}"""))
+        server.enqueue(MockResponse().setBody("""{"jobId":"jnl-1","status":"queued","statusUrl":null,"resultUrl":null}"""))
+
+        val ref = client.submitJob("Summarise this")
+        assertEquals("jnl-1", ref.jobId)
+        assertEquals("queued", ref.status)
+    }
+
+    @Test
+    fun `submitJob throws POHException when no skill matched`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"type":"chat","reason":"No skill matched"}"""))
+
+        val ex = assertFailsWith<POHException.HttpException> {
+            client.submitJob("random question")
+        }
+        assertEquals(422, ex.statusCode)
+    }
+
+    // ── getJobStatus ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `getJobStatus returns status for NL job`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"jobId":"jnl-1","status":"computing","error":null}"""))
+
+        val s = client.getJobStatus("jnl-1")
+        assertEquals("jnl-1", s.jobId)
+        assertEquals("computing", s.status)
+    }
+
+    // ── getJobResult ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `getJobResult parses completed result`() = runTest {
+        server.enqueue(MockResponse().setBody("""
+            {"jobId":"jnl-1","status":"done","profile":{"skillOutput":{"answer":42},"skillId":"sk-1","tokensUsed":10,"nlResponse":"The answer is 42."}}
+        """.trimIndent()))
+
+        val r = client.getJobResult("jnl-1")
+        assertEquals("jnl-1", r.jobId)
+        assertEquals("done", r.status)
+        assertEquals("The answer is 42.", r.nlResponse)
+        assertEquals(10, r.tokensUsed)
+    }
+
+    // ── pollJobResult ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `pollJobResult polls status then fetches result when done`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"jobId":"jnl-2","status":"done","error":null}"""))
+        server.enqueue(MockResponse().setBody("""
+            {"jobId":"jnl-2","profile":{"nlResponse":"Done!","skillId":"sk-1","tokensUsed":5,"skillOutput":null}}
+        """.trimIndent()))
+
+        val r = client.pollJobResult("jnl-2", PollOptions(intervalMs = 0L, timeoutMs = 5_000L))
+        assertEquals("Done!", r.nlResponse)
+    }
+
+    // ── askAndWait ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `askAndWait routes, submits and polls to completion`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"type":"skill","skillId":"sk-1","input":{}}"""))
+        server.enqueue(MockResponse().setBody("""{"jobId":"jnl-3","status":"queued","statusUrl":null,"resultUrl":null}"""))
+        server.enqueue(MockResponse().setBody("""{"jobId":"jnl-3","status":"done","error":null}"""))
+        server.enqueue(MockResponse().setBody("""
+            {"jobId":"jnl-3","profile":{"nlResponse":"Answer","skillId":"sk-1","tokensUsed":8,"skillOutput":null}}
+        """.trimIndent()))
+
+        val r = client.askAndWait("What is 2+2?", askOptions = AskOptions(), pollOptions = PollOptions(intervalMs = 0L))
+        assertEquals("Answer", r.nlResponse)
+    }
 }
