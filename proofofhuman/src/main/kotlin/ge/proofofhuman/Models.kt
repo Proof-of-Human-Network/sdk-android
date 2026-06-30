@@ -160,6 +160,28 @@ data class AskOptions(
     val budget: Double = 0.0,
     /** Wallet address to charge budget from. Required when budget > 0. */
     val walletAddress: String? = null,
+    /**
+     * PKCS8 PEM Ed25519 private key used to sign the fee payment. Required when
+     * budget > 0 — skill jobs always require a fee, and the node rejects the job
+     * outright without a valid signed payment proof.
+     */
+    val privateKeyPem: String? = null,
+)
+
+/** Options for submitting a paid compute job (user-specified model + dataset). */
+data class ComputeOptions(
+    /** Which model to run, e.g. "qwen2.5:1.5b", "llama3.1:8b". */
+    val model: String,
+    /** Fee in POH (e.g. 0.5 = 0.5 POH). Required — compute jobs are never free. */
+    val budget: Double,
+    /** Wallet address paying the fee. */
+    val walletAddress: String,
+    /** PKCS8 PEM Ed25519 private key used to sign the fee payment. */
+    val privateKeyPem: String,
+    /** Optional Hugging Face dataset id to ground the answer in (must be installed on the node). */
+    val dataset: String? = null,
+    /** Optional explicit job id. Auto-generated if omitted. */
+    val jobId: String? = null,
 )
 
 data class AskJobRef(

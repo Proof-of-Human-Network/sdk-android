@@ -72,13 +72,19 @@ poh.watchJob(ref.jobId).collect { snapshot ->
 
 ## Natural language jobs
 
+Skill jobs always require a fee — pass `budget`, `walletAddress`, and
+`privateKeyPem` on `AskOptions` so the SDK can sign the payment. The node
+verifies the signature and debits the fee before it will run the job at all;
+it rejects the request outright (no job ever runs) without a valid signed
+payment.
+
 ```kotlin
 import ge.proofofhuman.AskOptions
 
 // Block until the answer arrives
 val answer = poh.askAndWait(
     "What does vitalik.eth write about on Paragraph?",
-    AskOptions(budget = 0.5, walletAddress = "poh1abc..."),
+    AskOptions(budget = 0.5, walletAddress = "poh1abc...", privateKeyPem = myPrivateKey),
 )
 println(answer.nlResponse)
 println(answer.output)          // raw skill output as JsonElement
@@ -86,10 +92,34 @@ println(answer.output)          // raw skill output as JsonElement
 // Or fire-and-poll manually
 val ref = poh.submitJob(
     "What does vitalik.eth write about on Paragraph?",
-    AskOptions(budget = 0.5, walletAddress = "poh1abc..."),
+    AskOptions(budget = 0.5, walletAddress = "poh1abc...", privateKeyPem = myPrivateKey),
 )
 val result = poh.pollJobResult(ref.jobId)
 ```
+
+## Compute jobs (your own model + dataset)
+
+Run inference with a model of your choice, optionally grounded in a Hugging
+Face dataset already installed on the node. Like skill jobs, compute jobs are
+never free — `runCompute` always signs a fee payment.
+
+```kotlin
+import ge.proofofhuman.ComputeOptions
+
+val ref = poh.runCompute("Summarize the top 5 rows", ComputeOptions(
+    model = "llama3.1:8b",
+    dataset = "some-org/some-dataset", // optional
+    budget = 0.5,                      // POH
+    walletAddress = "poh1abc...",
+    privateKeyPem = myPrivateKey,
+))
+val result = poh.pollJobResult(ref.jobId)
+println(result.output)
+```
+
+Before either of these will work, the wallet's signing key must be registered
+with the node once via `registerSigningKey(...)` — the node has no way to
+verify a signature for a key it has never seen.
 
 ---
 

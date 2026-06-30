@@ -333,6 +333,77 @@ class POHClientTest {
         assertEquals(422, ex.statusCode)
     }
 
+    @Test
+    fun `submitJob throws when budget positive without private key`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"type":"skill","skillId":"sk-sum","input":{}}"""))
+
+        val ex = assertFailsWith<POHException.HttpException> {
+            client.submitJob("Summarise this", AskOptions(budget = 0.5, walletAddress = "pohAlice"))
+        }
+        assertEquals(402, ex.statusCode)
+    }
+
+    @Test
+    fun `submitJob signs a nonce-bound payment proof when budget positive`() = runTest {
+        val kp = POHSigning.generateKeyPair()
+        server.enqueue(MockResponse().setBody("""{"type":"skill","skillId":"sk-sum","input":{}}"""))
+        server.enqueue(MockResponse().setBody("""{"minerAddress":"pohMiner","gasPrice":1,"model":"qwen2.5:1.5b","queueLength":0,"reputation":1.0}"""))
+        server.enqueue(MockResponse().setBody("""{"address":"pohAlice","nonce":3}"""))
+        server.enqueue(MockResponse().setBody("""{"jobId":"jnl-1","status":"queued","statusUrl":null,"resultUrl":null}"""))
+
+        val ref = client.submitJob("Summarise this", AskOptions(
+            budget = 0.5, walletAddress = "pohAlice", privateKeyPem = kp.signingPrivateKey,
+        ))
+        assertEquals("jnl-1", ref.jobId)
+
+        server.takeRequest()  // /chat/route
+        server.takeRequest()            // /api/miner/info
+        server.takeRequest()            // /api/wallet/nonce
+        val jobReq = server.takeRequest()
+        val body = jobReq.body.readUtf8()
+        assertTrue(body.contains("\"maxBudget\":500000000"))
+        assertTrue(body.contains("\"requesterAddress\":\"pohAlice\""))
+        assertTrue(body.contains("\"paymentTx\""))
+        assertTrue(body.contains("\"txHash\""))
+        assertTrue(body.contains("\"signature\""))
+    }
+
+    // ── runCompute ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `runCompute throws when budget not positive`() = runTest {
+        val kp = POHSigning.generateKeyPair()
+        val ex = assertFailsWith<POHException.HttpException> {
+            client.runCompute("hi", ComputeOptions(
+                model = "qwen2.5:1.5b", budget = 0.0, walletAddress = "pohAlice", privateKeyPem = kp.signingPrivateKey,
+            ))
+        }
+        assertEquals(402, ex.statusCode)
+    }
+
+    @Test
+    fun `runCompute signs payment and posts model and dataset`() = runTest {
+        val kp = POHSigning.generateKeyPair()
+        server.enqueue(MockResponse().setBody("""{"minerAddress":"pohMiner","gasPrice":1,"model":"qwen2.5:1.5b","queueLength":0,"reputation":1.0}"""))
+        server.enqueue(MockResponse().setBody("""{"address":"pohAlice","nonce":7}"""))
+        server.enqueue(MockResponse().setBody("""{"jobId":"jc-1","status":"queued","statusUrl":null,"resultUrl":null}"""))
+
+        val ref = client.runCompute("Summarize the top rows", ComputeOptions(
+            model = "llama3.1:8b", dataset = "some-org/some-dataset",
+            budget = 0.5, walletAddress = "pohAlice", privateKeyPem = kp.signingPrivateKey,
+        ))
+        assertEquals("jc-1", ref.jobId)
+
+        server.takeRequest()  // /api/miner/info
+        server.takeRequest()  // /api/wallet/nonce
+        val jobReq = server.takeRequest()
+        val body = jobReq.body.readUtf8()
+        assertTrue(body.contains("\"model\":\"llama3.1:8b\""))
+        assertTrue(body.contains("\"dataset\":\"some-org/some-dataset\""))
+        assertTrue(body.contains("\"maxBudget\":500000000"))
+        assertTrue(body.contains("\"prompt\":\"Summarize the top rows\""))
+    }
+
     // ── getJobStatus ──────────────────────────────────────────────────────────
 
     @Test

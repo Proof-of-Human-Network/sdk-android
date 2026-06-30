@@ -288,6 +288,10 @@ class POHClient(
      * Automatically routes the question to the best available skill.
      *
      * Returns immediately with a [AskJobRef]; poll with [pollJobResult] or use [askAndWait].
+     *
+     * Skill jobs always require a fee — pass [AskOptions.budget], [AskOptions.walletAddress],
+     * and [AskOptions.privateKeyPem] so the request can be signed. The node verifies the
+     * signature and debits the fee before it will run the job at all.
      */
     suspend fun submitJob(question: String, options: AskOptions = AskOptions()): AskJobRef {
         val maxBudget = (options.budget * 1_000_000_000).toLong()
@@ -306,13 +310,65 @@ class POHClient(
         val skillInput = routeRaw.get("input") ?: com.google.gson.JsonObject()
 
         // 2. Submit job
-        val jobBody: Map<String, Any?> = buildMap {
-            put("type", "skill")
-            put("skillId", skillId)
-            put("payload", skillInput)
-            put("maxBudget", maxBudget)
-            options.walletAddress?.let { put("requesterAddress", it) }
+        val jobId = POHSigning.generateJobId()
+        val jobBody: MutableMap<String, Any?> = mutableMapOf(
+            "id" to jobId,
+            "type" to "skill",
+            "skillId" to skillId,
+            "payload" to skillInput,
+            "maxBudget" to maxBudget,
+        )
+        options.walletAddress?.let { jobBody["requesterAddress"] = it }
+
+        // Skill jobs always require a fee — sign the payment when budget > 0. No
+        // "unverified" fallback: the node rejects the job outright (never runs it)
+        // without a valid signed payment proof.
+        if (maxBudget > 0) {
+            val requester = options.walletAddress
+                ?: throw POHException.HttpException(402, "submitJob: walletAddress is required when budget > 0")
+            val privateKeyPem = options.privateKeyPem
+                ?: throw POHException.HttpException(402, "submitJob: privateKeyPem is required when budget > 0 — skill jobs always require a signed fee.")
+            val minerInfo = getMinerInfo()
+            val nonceInfo = getNonce(requester)
+            val (txHash, signature) = POHSigning.signJobPayment(
+                jobId, requester, minerInfo.minerAddress, maxBudget, nonceInfo.nonce, privateKeyPem
+            )
+            jobBody["paymentTx"] = mapOf("txHash" to txHash, "signature" to signature)
         }
+
+        return request("POST", "/job", AskJobRef::class.java, jobBody)
+    }
+
+    /**
+     * Submit a paid compute job that runs a user-specified model (and, optionally,
+     * grounds the answer in a Hugging Face dataset already installed on the node).
+     * Compute jobs are never free — the node rejects the request outright unless it
+     * carries a valid signed fee payment.
+     */
+    suspend fun runCompute(prompt: String, options: ComputeOptions): AskJobRef {
+        if (options.budget <= 0.0) {
+            throw POHException.HttpException(402, "runCompute: budget must be > 0 — compute jobs always require a fee")
+        }
+        val jobId = options.jobId ?: POHSigning.generateJobId()
+        val maxBudget = (options.budget * 1_000_000_000).toLong()
+
+        val minerInfo = getMinerInfo()
+        val nonceInfo = getNonce(options.walletAddress)
+        val (txHash, signature) = POHSigning.signJobPayment(
+            jobId, options.walletAddress, minerInfo.minerAddress, maxBudget, nonceInfo.nonce, options.privateKeyPem
+        )
+
+        val jobBody: MutableMap<String, Any?> = mutableMapOf(
+            "id" to jobId,
+            "type" to "compute",
+            "model" to options.model,
+            "payload" to mapOf("prompt" to prompt),
+            "maxBudget" to maxBudget,
+            "requesterAddress" to options.walletAddress,
+            "paymentTx" to mapOf("txHash" to txHash, "signature" to signature),
+        )
+        options.dataset?.let { jobBody["dataset"] = it }
+
         return request("POST", "/job", AskJobRef::class.java, jobBody)
     }
 
