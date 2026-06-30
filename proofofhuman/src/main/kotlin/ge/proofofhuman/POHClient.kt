@@ -58,6 +58,7 @@ val DEFAULT_NODES: List<String> = listOf(
 class POHClient(
     baseUrl: String? = null,
     nodes: List<String>? = null,
+    localBaseUrl: String? = null,
     val apiKey: String? = null,
     val timeoutMs: Long = 30_000L,
 ) {
@@ -76,6 +77,8 @@ class POHClient(
         nodes   != null -> nodes.map { it.trimEnd('/') }
         else            -> DEFAULT_NODES
     }
+
+    private val _localBaseUrl: String? = localBaseUrl?.trimEnd('/')
 
     /** URL of the selected node — resolved lazily on first use. */
     private var _resolvedUrl: String? = if (baseUrl != null) baseUrl.trimEnd('/') else null
@@ -108,13 +111,37 @@ class POHClient(
 
     // ── Core HTTP helper ───────────────────────────────────────────────────────
 
+    private fun needsLocalNode(method: String, path: String): Boolean {
+        val m = method.uppercase()
+        if (m == "GET" || m == "HEAD" || m == "OPTIONS") return false
+        val p = path.split("?").first()
+        return !(m == "POST" && p == "/gossip")
+    }
+
+    private fun isLoopback(url: String): Boolean {
+        val host = url.removePrefix("https://").removePrefix("http://")
+            .substringBefore('/').substringBefore(':')
+        return host in listOf("localhost", "127.0.0.1", "::1", "[::1]")
+    }
+
+    private suspend fun resolveBaseUrl(method: String, path: String): String {
+        if (!needsLocalNode(method, path)) return resolveNode()
+        _localBaseUrl?.let { return it }
+        val remote = resolveNode()
+        if (isLoopback(remote)) return remote
+        throw POHException.HttpException(
+            403,
+            "This operation requires a local miner node. Pass localBaseUrl = \"http://127.0.0.1:3456\".",
+        )
+    }
+
     private suspend fun <T> request(
         method: String,
         path: String,
         responseType: Type,
         body: Any? = null,
     ): T {
-        val url = resolveNode() + path
+        val url = resolveBaseUrl(method, path) + path
 
         val requestBody = when {
             body != null -> gson.toJson(body).toRequestBody(json)
@@ -450,11 +477,12 @@ class POHClient(
     /**
      * List all skills available on the connected node.
      */
-    suspend fun listSkills(): List<Skill> =
-        request(
-            "GET", "/api/skills",
-            object : com.google.gson.reflect.TypeToken<List<Skill>>() {}.type,
-        )
+    suspend fun listSkills(): List<Skill> {
+        val raw: com.google.gson.JsonElement = request("GET", "/api/skills", com.google.gson.JsonElement::class.java)
+        val arr = if (raw.isJsonArray) raw.asJsonArray
+                  else raw.asJsonObject.getAsJsonArray("skills")
+        return gson.fromJson(arr, object : com.google.gson.reflect.TypeToken<List<Skill>>() {}.type)
+    }
 
     // ── Wallet / blockchain ────────────────────────────────────────────────────
 
@@ -486,9 +514,25 @@ class POHClient(
      * Register a signing key for [address] on the node.
      * The [proof] must be `POHSigning.createSigningProof(address, privateKeyPem)`.
      */
-    suspend fun registerSigningKey(address: String, signingPublicKey: String, proof: String): com.google.gson.JsonObject {
-        val body = mapOf("address" to address, "signingPublicKey" to signingPublicKey, "proof" to proof)
+    suspend fun registerSigningKey(
+        address: String,
+        signingPublicKey: String,
+        proof: String,
+        rotationProof: String? = null,
+    ): com.google.gson.JsonObject {
+        val body = buildMap {
+            put("address", address)
+            put("signingPublicKey", signingPublicKey)
+            put("proof", proof)
+            rotationProof?.let { put("rotationProof", it) }
+        }
         return request("POST", "/api/wallet/register-key", com.google.gson.JsonObject::class.java, body)
+    }
+
+    /** Register a [KeyPair] from [POHSigning.generateKeyPair]. */
+    suspend fun registerKeyPair(keyPair: KeyPair, rotationProof: String? = null): com.google.gson.JsonObject {
+        val proof = POHSigning.createSigningProof(keyPair.address, keyPair.signingPrivateKey)
+        return registerSigningKey(keyPair.address, keyPair.signingPublicKey, proof, rotationProof)
     }
 
     /** Fetch detailed information about the connected miner node. */
@@ -516,7 +560,8 @@ class POHClient(
         memo: String = "",
     ): TxSubmitResult {
         val nonceResp = getNonce(from)
-        val tx        = POHSigning.buildTransfer(from, to, amountPoh, nonceResp.nonce + 1, fee, memo)
+        val nextNonce = (nonceResp.pendingNonce ?: nonceResp.nonce) + 1
+        val tx        = POHSigning.buildTransfer(from, to, amountPoh, nextNonce, fee, memo)
         val signed    = POHSigning.signTransaction(tx, keyPair)
         return submitTransaction(signed)
     }

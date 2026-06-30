@@ -249,6 +249,7 @@ data class WalletBalance(
 data class AccountNonce(
     val address: String,
     val nonce: Long,
+    val pendingNonce: Long? = null,
 )
 
 /** A single entry in the transaction history. */
@@ -314,4 +315,6 @@ data class KeyPair(
     val signingPrivateKey: String,
     /** SPKI PEM public key. Register with the node via [POHClient.registerSigningKey]. */
     val signingPublicKey: String,
+    /** Canonical `poh…` address derived from [signingPublicKey]. */
+    val address: String,
 )

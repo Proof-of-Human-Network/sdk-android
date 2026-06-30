@@ -40,12 +40,21 @@ object POHSigning {
      * poh.registerSigningKey(myAddress, kp.signingPublicKey, POHSigning.createSigningProof(myAddress, kp.signingPrivateKey))
      * ```
      */
+    fun deriveAddressFromSigningKey(signingPublicKey: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(signingPublicKey.toByteArray(Charsets.UTF_8))
+        val hex = digest.joinToString("") { "%02x".format(it) }
+        return "poh" + hex.take(40)
+    }
+
     fun generateKeyPair(): KeyPair {
         val gen = KeyPairGenerator.getInstance("Ed25519")
         val kp  = gen.generateKeyPair()
+        val pubPem = bytesToPem(kp.public.encoded, "PUBLIC KEY")
         return KeyPair(
             signingPrivateKey = bytesToPem(kp.private.encoded, "PRIVATE KEY"),
-            signingPublicKey  = bytesToPem(kp.public.encoded,  "PUBLIC KEY"),
+            signingPublicKey  = pubPem,
+            address           = deriveAddressFromSigningKey(pubPem),
         )
     }
 
@@ -73,6 +82,16 @@ object POHSigning {
      */
     fun createSigningProof(walletAddress: String, privateKeyPem: String): String =
         signData(walletAddress, privateKeyPem)
+
+    /** Build the rotation proof required to replace an existing registered key. */
+    fun createRotationProof(
+        address: String,
+        newSigningPublicKey: String,
+        existingPrivateKeyPem: String,
+    ): String {
+        val payload = """{"action":"rotate-key","address":"${jsonEscape(address)}","newSigningPublicKey":"${jsonEscape(newSigningPublicKey)}"}"""
+        return signData(payload, existingPrivateKeyPem)
+    }
 
     // ── Transaction ───────────────────────────────────────────────────────────
 
