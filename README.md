@@ -246,7 +246,7 @@ automatically on the first request.
 ```kotlin
 val poh = POHClient(
     nodes = listOf(
-        "https://bootnode.proofofhuman.ge",
+        "https://miner.poh.ge",
         "https://proofofhuman.ge",
         "https://poh.assetux.com",
     ),
@@ -258,7 +258,7 @@ println(poh.activeNode)
 ```
 
 The default node list (used when neither `baseUrl` nor `nodes` is supplied) is:
-- `https://bootnode.proofofhuman.ge`
+- `https://miner.poh.ge`
 - `https://proofofhuman.ge`
 - `https://poh.assetux.com`
 
@@ -306,3 +306,25 @@ in `~/.gradle/gradle.properties`.
 ## License
 
 Apache License 2.0
+
+## Stablecoins (multi-currency) — protocol notes
+
+The chain now carries five regional stablecoins alongside POH: `aiGEL`,
+`aiKGS`, `aiAMD`, `aiETB`, `aiBTN` (displayed αιGEL …). They use **2 decimals**
+(1 unit = 100 raw); POH keeps 9 (1 POH = 1e9 μPOH).
+
+Wire protocol (implement when adding native support to this SDK):
+
+- `PohTransaction` gains an optional `currency` field. **Hash preimage rule:**
+  `currency` is appended after `memo` in the signed JSON payload ONLY when
+  non-POH — a POH transaction hashes byte-identically to the historical shape
+  and must NOT carry the key at all.
+- Job payment hash: `currency` is the SIXTH key of
+  `{jobId,requesterAddress,minerAddress,amount,nonce,currency}` ONLY when
+  non-POH.
+- `GET /api/assets` lists the registry (tickers, decimals, display names, gas
+  prices). `GET /api/wallet/balance` adds `assets: { ticker: {raw, display} }`.
+- Job payloads accept `currency`; the miner receives exactly the currency paid.
+
+Native Swift/Kotlin bindings for these fields are NOT yet implemented in this
+SDK — see sdk-js (reference implementation) for exact semantics.
