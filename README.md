@@ -10,14 +10,14 @@ Scan wallet addresses for human-identity signals, query blockchain state, and si
 **Gradle (Kotlin DSL)**
 ```kotlin
 dependencies {
-    implementation("ge.proofofhuman:proofofhuman:1.3.0")
+    implementation("ge.proofofhuman:proofofhuman:1.5.2")
 }
 ```
 
 **Gradle (Groovy)**
 ```groovy
 dependencies {
-    implementation 'ge.proofofhuman:proofofhuman:1.3.0'
+    implementation 'ge.proofofhuman:proofofhuman:1.5.2'
 }
 ```
 
@@ -26,7 +26,7 @@ dependencies {
 <dependency>
     <groupId>ge.proofofhuman</groupId>
     <artifactId>proofofhuman</artifactId>
-    <version>1.3.0</version>
+    <version>1.5.2</version>
 </dependency>
 ```
 
@@ -57,6 +57,7 @@ println(result.verdict.verdict)
 **Bulk scan**
 ```kotlin
 val job = poh.scanBulk(listOf("0xabc...", "0xdef...", "sol1..."))
+val snap = poh.getJob(job.jobId)            // single snapshot
 val done = poh.pollJob(job.jobId)           // blocks until complete
 done.results.forEach { println(it) }
 ```
@@ -94,7 +95,9 @@ val ref = poh.submitJob(
     "What does vitalik.eth write about on Paragraph?",
     AskOptions(budget = 0.5, walletAddress = "poh1abc...", privateKeyPem = myPrivateKey),
 )
-val result = poh.pollJobResult(ref.jobId)
+val status = poh.getJobStatus(ref.jobId)    // lightweight status check
+val result = poh.getJobResult(ref.jobId)    // full result once done
+val result = poh.pollJobResult(ref.jobId)   // or poll until it arrives
 ```
 
 ## Compute jobs (your own model + dataset)
@@ -140,6 +143,9 @@ history.entries.forEach { entry ->
     println("${entry.txHash}  delta=${entry.delta}  label=${entry.label}")
 }
 
+// Raw transactions for an address (untyped JsonObject)
+val txs = poh.getTransactions("poh1abc...")
+
 // Pending mempool transactions
 val pending = poh.getPendingTransactions()
 println("${pending.count} pending txs")
@@ -164,6 +170,20 @@ val keyPair = POHSigning.generateKeyPair()
 ```kotlin
 val proof = POHSigning.createSigningProof(myAddress, keyPair.signingPrivateKey)
 poh.registerSigningKey(myAddress, keyPair.signingPublicKey, proof)
+
+// Or in one call — uses keyPair.address and builds the proof itself
+poh.registerKeyPair(keyPair)
+
+// The address a keypair maps to (from its SPKI PEM public key)
+val addr = POHSigning.deriveAddressFromSigningKey(keyPair.signingPublicKey)
+```
+
+**Rotating a key** — replacing an already-registered key requires a rotation
+proof signed with the *old* private key:
+
+```kotlin
+val proof = POHSigning.createRotationProof(myAddress, newKeyPair.signingPublicKey, oldPrivateKeyPem)
+poh.registerKeyPair(newKeyPair, rotationProof = proof)
 ```
 
 ### 3. Build, sign, and submit a transaction
@@ -201,6 +221,10 @@ val result = poh.transfer(
 println("txHash: ${result.txHash}")
 ```
 
+`transfer` is pending-aware: it uses `pendingNonce + 1` when the account has
+transactions waiting in the mempool (falling back to `nonce + 1`), so back-to-back
+transfers don't collide.
+
 ### Sign with explicit PEM strings
 
 ```kotlin
@@ -216,6 +240,20 @@ val hash = POHSigning.computeTxHash(
     nonce = 42L, timestamp = System.currentTimeMillis(),
     memo = "",
 )
+```
+
+### Job fee payments
+
+Used internally by `submitJob`/`runCompute`; exposed for custom flows. The
+payment hash binds the fee to one specific job + miner + amount + nonce.
+
+```kotlin
+val jobId = POHSigning.generateJobId()   // "job-<millis>-<8 hex>"; fix it before signing
+val hash  = POHSigning.computeJobPaymentHash(jobId, myAddress, minerAddress, 500L, nonce)
+val (txHash, signature) = POHSigning.signJobPayment(
+    jobId, myAddress, minerAddress, 500L, nonce, keyPair.signingPrivateKey,
+)
+// txHash + signature go in the `paymentTx` field of a POST /job request
 ```
 
 ---
@@ -234,6 +272,14 @@ skills.forEach { println("${it.id}  ${it.description}") }
 // Basic node health
 val node = poh.getNodeInfo()
 println("node=${node.nodeId}  version=${node.version}  peers=${node.peers}")
+
+// Signal verification methods
+val methods = poh.getMethods()
+methods.forEach { println(it.id) }
+
+// Scan pricing (currency is "USDC/USDT")
+val pricing = poh.getPricing(count = 100)
+println("${pricing.total} ${pricing.currency} (${pricing.perAddress}/address)")
 ```
 
 ---
@@ -261,6 +307,40 @@ The default node list (used when neither `baseUrl` nor `nodes` is supplied) is:
 - `https://miner.poh.ge`
 - `https://proofofhuman.ge`
 - `https://poh.assetux.com`
+
+### Local miner routing
+
+Write operations (any non-GET request except `POST /gossip`) must go to a node
+you control. Pass `localBaseUrl` to route them to your local miner while reads
+still use the public nodes; without it, writes to a non-loopback node fail with
+a 403 `HttpException` explaining the requirement.
+
+```kotlin
+val poh = POHClient(localBaseUrl = "http://127.0.0.1:3456")
+```
+
+---
+
+## Chat encryption (ChatCrypto)
+
+End-to-end encryption for chat payloads (X25519 + HKDF + AES-256-GCM),
+compatible with the node's envelope format.
+
+```kotlin
+import ge.proofofhuman.ChatCrypto
+
+// Deterministic X25519 keypair from a stable secret (ByteArray or String)
+val kp = ChatCrypto.deriveEncryptionKeypair(stableSecret)
+
+// Encrypt for a recipient (plaintext as String or ByteArray)
+val env = ChatCrypto.seal(recipient.publicKeyB64, "hello")   // SealedEnvelope
+
+// Decrypt an envelope
+val plaintext = ChatCrypto.open(env, kp.privateKeyB64)
+
+// Cheap shape check for incoming payloads
+if (ChatCrypto.isEnvelope(v, epk, ct)) { /* it's a sealed envelope */ }
+```
 
 ---
 

@@ -8,7 +8,7 @@ plugins {
 }
 
 group   = "ge.proofofhuman"
-version = "1.5.0"
+version = "1.5.2"
 
 // ── Dependencies ───────────────────────────────────────────────────────────────
 
@@ -20,6 +20,8 @@ dependencies {
     api("com.squareup.okhttp3:okhttp:4.12.0")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("com.google.code.gson:gson:2.10.1")
+    // X25519 for public-job chat encryption (JCA lacks scalar→pubkey derivation).
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
 
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")

@@ -26,7 +26,7 @@ import kotlin.coroutines.resumeWithException
 
 /** Default public network nodes used when no baseUrl/nodes is provided. */
 val DEFAULT_NODES: List<String> = listOf(
-    "https://bootnode.proofofhuman.ge",
+    "https://miner.poh.ge",
     "https://proofofhuman.ge",
     "https://poh.assetux.com",
 )
@@ -40,7 +40,7 @@ val DEFAULT_NODES: List<String> = listOf(
  *
  * // Network mode — auto-picks fastest live node:
  * val poh = POHClient(nodes = listOf(
- *     "https://bootnode.proofofhuman.ge",
+ *     "https://miner.poh.ge",
  *     "https://proofofhuman.ge"
  * ))
  *
