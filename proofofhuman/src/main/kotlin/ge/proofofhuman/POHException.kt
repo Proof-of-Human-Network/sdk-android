@@ -3,10 +3,15 @@ package ge.proofofhuman
 /** All errors thrown by [POHClient]. */
 sealed class POHException(message: String, cause: Throwable? = null) : Exception(message, cause) {
 
-    /** Server returned a non-2xx status. */
-    class HttpException(val statusCode: Int, val body: String)
-        : POHException("HTTP $statusCode: $body")
-
+    /**
+     * Server returned a non-2xx status.
+     * [json] is the parsed body when available (e.g. 412 HF_DATASET_DOWNLOAD_REQUIRED).
+     */
+    class HttpException(
+        val statusCode: Int,
+        val body: String,
+        val json: com.google.gson.JsonObject? = null,
+    ) : POHException("HTTP $statusCode: $body")
     /** Network-level failure (no connectivity, DNS, etc.). */
     class NetworkException(cause: Throwable)
         : POHException("Network error: ${cause.message}", cause)

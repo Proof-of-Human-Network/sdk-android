@@ -168,9 +168,55 @@ data class AskOptions(
     val privateKeyPem: String? = null,
 )
 
+/** Max attachment size accepted by the miner (1 MB). */
+const val MAX_ATTACHMENT_BYTES = 1 * 1024 * 1024
+
+/** One file attachment for chat/compute (≤1 MB). Prefer [dataUrl] for images. */
+data class ChatAttachment(
+    val name: String,
+    val mime: String? = null,
+    val content: String? = null,
+    val contentBase64: String? = null,
+    val dataUrl: String? = null,
+) {
+    fun toMap(): Map<String, Any?> = buildMap {
+        put("name", name)
+        mime?.let { put("mime", it) }
+        content?.let { put("content", it) }
+        contentBase64?.let { put("contentBase64", it) }
+        dataUrl?.let { put("dataUrl", it) }
+    }
+}
+
+/** Options for free-form chat (`POST /chat/ask`). */
+data class ChatOptions(
+    val history: List<Map<String, String>>? = null,
+    val model: String? = null,
+    val privateMode: Boolean = true,
+    val attachments: List<ChatAttachment>? = null,
+    /** Force a dataset after approving a 412 HF_DATASET_DOWNLOAD_REQUIRED. */
+    val datasetId: String? = null,
+    val requesterAddress: String? = null,
+)
+
+/** Reply from [POHClient.chat]. */
+data class ChatResult(
+    val type: String? = null,
+    val message: String = "",
+    val skill: String? = null,
+    val skillId: String? = null,
+    val cascade: Boolean = false,
+    val tasks: Boolean = false,
+    val dataset: String? = null,
+    val datasetId: String? = null,
+    val fromChainHistory: Boolean = false,
+    val code: String? = null,
+    val raw: com.google.gson.JsonObject? = null,
+)
+
 /** Options for submitting a paid compute job (user-specified model + dataset). */
 data class ComputeOptions(
-    /** Which model to run, e.g. "qwen2.5:1.5b", "llama3.1:8b". */
+    /** Which model to run, e.g. "qwen3-1.7b", "qwen3vl-2b". */
     val model: String,
     /** Fee in POH (e.g. 0.5 = 0.5 POH). Required — compute jobs are never free. */
     val budget: Double,
@@ -182,6 +228,21 @@ data class ComputeOptions(
     val dataset: String? = null,
     /** Optional explicit job id. Auto-generated if omitted. */
     val jobId: String? = null,
+    val history: List<Map<String, String>>? = null,
+    val attachments: List<ChatAttachment>? = null,
+    /** When false, skip skill/task-cascade auto-routing on the miner. */
+    val route: Boolean? = null,
+)
+
+/** Installed HF datasets list. */
+data class HfDatasetListResult(
+    val datasets: List<com.google.gson.JsonElement> = emptyList(),
+)
+
+/** MCP status from the miner. */
+data class McpStatusResult(
+    val servers: List<com.google.gson.JsonElement>? = null,
+    val tools: List<com.google.gson.JsonElement>? = null,
 )
 
 data class AskJobRef(

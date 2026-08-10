@@ -8,7 +8,7 @@ plugins {
 }
 
 group   = "ge.proofofhuman"
-version = "1.5.2"
+version = "1.6.0"
 
 // ── Dependencies ───────────────────────────────────────────────────────────────
 
