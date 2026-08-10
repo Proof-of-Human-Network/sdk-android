@@ -1,0 +1,16 @@
+# Copy to ~/.gradle/gradle.properties (recommended) or local gradle.properties (gitignored).
+# These are NOT your Central Portal login — generate a User Token at:
+#   https://central.sonatype.com/account
+# Account → Generate User Token → use Username + Password below.
+
+mavenCentralUsername=YOUR_CENTRAL_PORTAL_TOKEN_USERNAME
+mavenCentralPassword=YOUR_CENTRAL_PORTAL_TOKEN_PASSWORD
+
+# GPG signing (ASCII-armor secret key, base64-encoded, or raw -----BEGIN PGP PRIVATE KEY-----)
+# Export: gpg --export-secret-keys --armor YOUR_KEY_ID | base64 -w0
+signing.key=BASE64_OR_ASCII_ARMORED_PRIVATE_KEY
+signing.password=YOUR_GPG_KEY_PASSPHRASE
+signing.keyId=LAST_8_HEX_OF_KEY_ID
+
+kotlin.code.style=official
+org.gradle.jvmargs=-Xmx2g -XX:+UseParallelGC

@@ -1,15 +1,11 @@
+# Build
 .gradle/
 build/
-*.class
-*.jar
-!gradle/wrapper/gradle-wrapper.jar
-*.aar
-*.apk
+**/build/
 local.properties
-.idea/
 *.iml
-captures/
-.externalNativeBuild/
-.cxx/
-.env
+.idea/
 .DS_Store
+
+# Never commit credentials (use ~/.gradle/gradle.properties)
+# Project gradle.properties is non-secret defaults only.
