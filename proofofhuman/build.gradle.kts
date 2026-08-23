@@ -63,7 +63,7 @@ mavenPublishing {
 
     pom {
         name.set("proofofhuman")
-        description.set("Android / JVM SDK for the Proof of Human API — scan wallet addresses for human identity signals.")
+        description.set("Android / JVM SDK for the Decentralized Artificial Intelligence API — scan wallet addresses for human identity signals.")
         url.set("https://github.com/Proof-of-Human-Network/sdk-android")
         inceptionYear.set("2024")
 
@@ -78,7 +78,7 @@ mavenPublishing {
         developers {
             developer {
                 id.set("proofofhuman")
-                name.set("Proof of Human")
+                name.set("Decentralized Artificial Intelligence")
                 email.set("support@assetux.com")
                 url.set("https://github.com/Proof-of-Human-Network")
             }

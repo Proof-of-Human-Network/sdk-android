@@ -26,27 +26,26 @@ import kotlin.coroutines.resumeWithException
 
 /** Default public network nodes used when no baseUrl/nodes is provided. */
 val DEFAULT_NODES: List<String> = listOf(
-    "https://miner.poh.ge",
-    "https://proofofhuman.ge",
-    "https://poh.assetux.com",
+    "https://miner.iamai.kg",
+    "https://iamai.kg",
 )
 
 /**
- * Client for the Proof of Human checker API.
+ * Client for the Decentralized Artificial Intelligence checker API.
  *
  * ```kotlin
  * // Single node (legacy):
- * val poh = POHClient(baseUrl = "https://proofofhuman.ge", apiKey = "your-key")
+ * val dai = DAIClient(baseUrl = "https://iamai.kg", apiKey = "your-key")
  *
  * // Network mode — auto-picks fastest live node:
- * val poh = POHClient(nodes = listOf(
- *     "https://miner.poh.ge",
- *     "https://proofofhuman.ge"
+ * val dai = DAIClient(nodes = listOf(
+ *     "https://miner.iamai.kg",
+ *     "https://iamai.kg"
  * ))
  *
  * // Single address
- * val scan = poh.scan("0xabc...")
- * val verdict = poh.getBrainVerdict(scan.brainKey!!)
+ * val scan = dai.scan("0xabc...")
+ * val verdict = dai.getBrainVerdict(scan.brainKey!!)
  * ```
  *
  * @param baseUrl   Single-node base URL (legacy). Takes precedence over [nodes].
@@ -55,7 +54,7 @@ val DEFAULT_NODES: List<String> = listOf(
  * @param apiKey    Optional API key sent as `x-api-key` header.
  * @param timeoutMs Per-request HTTP timeout in milliseconds.
  */
-class POHClient(
+class DAIClient(
     baseUrl: String? = null,
     nodes: List<String>? = null,
     localBaseUrl: String? = null,
@@ -129,7 +128,7 @@ class POHClient(
         _localBaseUrl?.let { return it }
         val remote = resolveNode()
         if (isLoopback(remote)) return remote
-        throw POHException.HttpException(
+        throw DAIException.HttpException(
             403,
             "This operation requires a local miner node. Pass localBaseUrl = \"http://127.0.0.1:3456\".",
         )
@@ -158,7 +157,7 @@ class POHClient(
         val response = try {
             http.newCall(req).await()
         } catch (e: IOException) {
-            throw POHException.NetworkException(e)
+            throw DAIException.NetworkException(e)
         }
 
         val rawBody = response.body?.string() ?: ""
@@ -168,13 +167,13 @@ class POHClient(
                 gson.fromJson(rawBody, JsonObject::class.java)
             } catch (_: Exception) { null }
             val msg = json?.get("error")?.asString ?: rawBody
-            throw POHException.HttpException(response.code, msg, json)
+            throw DAIException.HttpException(response.code, msg, json)
         }
 
         return try {
             gson.fromJson(rawBody, responseType)
         } catch (e: Exception) {
-            throw POHException.DecodingException(e)
+            throw DAIException.DecodingException(e)
         }
     }
 
@@ -195,10 +194,10 @@ class POHClient(
     /**
      * Scan multiple addresses as an async job.
      * Poll with [pollJob] or stream progress with [watchJob].
-     * @throws POHException.EmptyInputsException if [inputs] is empty.
+     * @throws DAIException.EmptyInputsException if [inputs] is empty.
      */
     suspend fun scanBulk(inputs: List<String>, options: ScanOptions = ScanOptions()): BulkScanRef {
-        if (inputs.isEmpty()) throw POHException.EmptyInputsException
+        if (inputs.isEmpty()) throw DAIException.EmptyInputsException
         return request(
             "POST", "/checker",
             BulkScanRef::class.java,
@@ -212,7 +211,7 @@ class POHClient(
 
     /**
      * Poll a job until it reaches a terminal state (`done` or `error`).
-     * @throws POHException.JobTimedOutException if [PollOptions.timeoutMs] elapses.
+     * @throws DAIException.JobTimedOutException if [PollOptions.timeoutMs] elapses.
      */
     suspend fun pollJob(jobId: String, options: PollOptions = PollOptions()): JobStatus {
         val deadline = System.currentTimeMillis() + options.timeoutMs
@@ -221,7 +220,7 @@ class POHClient(
             options.onProgress?.invoke(status)
             if (status.isTerminal) return status
             if (System.currentTimeMillis() >= deadline) {
-                throw POHException.JobTimedOutException(jobId, status.status)
+                throw DAIException.JobTimedOutException(jobId, status.status)
             }
             delay(options.intervalMs)
         }
@@ -238,7 +237,7 @@ class POHClient(
             emit(status)
             if (status.isTerminal) return@flow
             if (System.currentTimeMillis() >= deadline) {
-                throw POHException.JobTimedOutException(jobId, status.status)
+                throw DAIException.JobTimedOutException(jobId, status.status)
             }
             delay(options.intervalMs)
         }
@@ -267,7 +266,7 @@ class POHClient(
 
     /**
      * Poll the brain verdict until `status` leaves `"pending"`, then return it.
-     * @throws POHException.JobTimedOutException if [BrainPollOptions.timeoutMs] elapses.
+     * @throws DAIException.JobTimedOutException if [BrainPollOptions.timeoutMs] elapses.
      */
     suspend fun pollBrainVerdict(
         brainKey: String,
@@ -278,7 +277,7 @@ class POHClient(
             val v = getBrainVerdict(brainKey)
             if (v.status != "pending") return v
             if (System.currentTimeMillis() + options.intervalMs >= deadline) {
-                throw POHException.JobTimedOutException(brainKey, v.status)
+                throw DAIException.JobTimedOutException(brainKey, v.status)
             }
             delay(options.intervalMs)
         }
@@ -311,7 +310,7 @@ class POHClient(
         request("GET", "/checker/pricing?count=$count", PricingResponse::class.java)
 
     /**
-     * Submit a natural language question to the PoH network.
+     * Submit a natural language question to the DAI network.
      * Automatically routes the question to the best available skill.
      *
      * Returns immediately with a [AskJobRef]; poll with [pollJobResult] or use [askAndWait].
@@ -331,7 +330,7 @@ class POHClient(
         val routeRaw: com.google.gson.JsonObject = request("POST", "/chat/route", com.google.gson.JsonObject::class.java, routeBody)
         val type = routeRaw.get("type")?.asString ?: "chat"
         if (type in setOf("cascade", "tasks", "dataset", "hf-model", "sequence")) {
-            throw POHException.HttpException(
+            throw DAIException.HttpException(
                 422,
                 "Route type \"$type\" is free (task cascade / dataset / media). Use chat() instead of submitJob().",
                 routeRaw,
@@ -339,12 +338,12 @@ class POHClient(
         }
         val skillId = if (routeRaw.has("skillId") && !routeRaw.get("skillId").isJsonNull) routeRaw.get("skillId").asString else null
         if (type != "skill" || skillId == null) {
-            throw POHException.HttpException(422, "No skill available for: \"$question\"")
+            throw DAIException.HttpException(422, "No skill available for: \"$question\"")
         }
         val skillInput = routeRaw.get("input") ?: com.google.gson.JsonObject()
 
         // 2. Submit job
-        val jobId = POHSigning.generateJobId()
+        val jobId = DAISigning.generateJobId()
         val jobBody: MutableMap<String, Any?> = mutableMapOf(
             "id" to jobId,
             "type" to "skill",
@@ -359,12 +358,12 @@ class POHClient(
         // without a valid signed payment proof.
         if (maxBudget > 0) {
             val requester = options.walletAddress
-                ?: throw POHException.HttpException(402, "submitJob: walletAddress is required when budget > 0")
+                ?: throw DAIException.HttpException(402, "submitJob: walletAddress is required when budget > 0")
             val privateKeyPem = options.privateKeyPem
-                ?: throw POHException.HttpException(402, "submitJob: privateKeyPem is required when budget > 0 — skill jobs always require a signed fee.")
+                ?: throw DAIException.HttpException(402, "submitJob: privateKeyPem is required when budget > 0 — skill jobs always require a signed fee.")
             val minerInfo = getMinerInfo()
             val nonceInfo = getNonce(requester)
-            val (txHash, signature) = POHSigning.signJobPayment(
+            val (txHash, signature) = DAISigning.signJobPayment(
                 jobId, requester, minerInfo.minerAddress, maxBudget, nonceInfo.nonce, privateKeyPem
             )
             jobBody["paymentTx"] = mapOf("txHash" to txHash, "signature" to signature)
@@ -381,17 +380,17 @@ class POHClient(
      */
     suspend fun runCompute(prompt: String, options: ComputeOptions): AskJobRef {
         if (options.budget <= 0.0) {
-            throw POHException.HttpException(402, "runCompute: budget must be > 0 — compute jobs always require a fee")
+            throw DAIException.HttpException(402, "runCompute: budget must be > 0 — compute jobs always require a fee")
         }
         if (prompt.isEmpty() && options.attachments.isNullOrEmpty()) {
-            throw POHException.HttpException(400, "runCompute: prompt or attachments required")
+            throw DAIException.HttpException(400, "runCompute: prompt or attachments required")
         }
-        val jobId = options.jobId ?: POHSigning.generateJobId()
+        val jobId = options.jobId ?: DAISigning.generateJobId()
         val maxBudget = (options.budget * 1_000_000_000).toLong()
 
         val minerInfo = getMinerInfo()
         val nonceInfo = getNonce(options.walletAddress)
-        val (txHash, signature) = POHSigning.signJobPayment(
+        val (txHash, signature) = DAISigning.signJobPayment(
             jobId, options.walletAddress, minerInfo.minerAddress, maxBudget, nonceInfo.nonce, options.privateKeyPem
         )
 
@@ -424,7 +423,7 @@ class POHClient(
      */
     suspend fun chat(message: String, options: ChatOptions = ChatOptions()): ChatResult {
         if (message.isEmpty() && options.attachments.isNullOrEmpty()) {
-            throw POHException.HttpException(400, "chat: message or attachments required")
+            throw DAIException.HttpException(400, "chat: message or attachments required")
         }
         val body: MutableMap<String, Any?> = mutableMapOf(
             "message" to (if (message.isEmpty()) "Please analyze the attached file(s)." else message),
@@ -463,7 +462,7 @@ class POHClient(
 
     /** Download + install a Hugging Face dataset on the miner (row-capped). */
     suspend fun downloadDataset(datasetId: String): JsonObject {
-        if (datasetId.isEmpty()) throw POHException.HttpException(400, "downloadDataset: datasetId required")
+        if (datasetId.isEmpty()) throw DAIException.HttpException(400, "downloadDataset: datasetId required")
         return request(
             "POST",
             "/api/hf-dataset/${encode(datasetId)}/download",
@@ -473,7 +472,7 @@ class POHClient(
 
     /** Remove an installed HF dataset from the miner. */
     suspend fun deleteDataset(datasetId: String): JsonObject {
-        if (datasetId.isEmpty()) throw POHException.HttpException(400, "deleteDataset: datasetId required")
+        if (datasetId.isEmpty()) throw DAIException.HttpException(400, "deleteDataset: datasetId required")
         return request("DELETE", "/api/hf-dataset/${encode(datasetId)}", JsonObject::class.java)
     }
 
@@ -522,7 +521,7 @@ class POHClient(
 
     /**
      * Poll a job until it reaches terminal state (`done` or `error`).
-     * @throws [POHException.JobTimedOutException] if [PollOptions.timeoutMs] elapses.
+     * @throws [DAIException.JobTimedOutException] if [PollOptions.timeoutMs] elapses.
      */
     suspend fun pollJobResult(
         jobId: String,
@@ -535,7 +534,7 @@ class POHClient(
                 return getJobResult(jobId)
             }
             if (System.currentTimeMillis() >= deadline) {
-                throw POHException.JobTimedOutException(jobId, status.status)
+                throw DAIException.JobTimedOutException(jobId, status.status)
             }
             delay(options.intervalMs)
         }
@@ -545,9 +544,9 @@ class POHClient(
      * Convenience: submit a question and wait for the answer in one call.
      *
      * ```kotlin
-     * val result = poh.askAndWait(
+     * val result = dai.askAndWait(
      *     "What does vitalik.eth write about on Paragraph?",
-     *     AskOptions(budget = 0.5, walletAddress = "poh..."),
+     *     AskOptions(budget = 0.5, walletAddress = "dai..."),
      * )
      * println(result.output)
      * ```
@@ -582,7 +581,7 @@ class POHClient(
 
     // ── Wallet / blockchain ────────────────────────────────────────────────────
 
-    /** Fetch the POH balance for [address]. Balance is in μPOH (1 POH = 1_000_000_000 μPOH). */
+    /** Fetch the DAI balance for [address]. Balance is in μDAI (1 DAI = 1_000_000_000 μDAI). */
     suspend fun getBalance(address: String): WalletBalance =
         request("GET", "/api/wallet/balance?address=${encode(address)}", WalletBalance::class.java)
 
@@ -602,13 +601,13 @@ class POHClient(
     suspend fun getPendingTransactions(): PendingTxResult =
         request("GET", "/api/tx/pending", PendingTxResult::class.java)
 
-    /** Submit a pre-signed [PohTx] to the network. */
-    suspend fun submitTransaction(tx: PohTx): TxSubmitResult =
+    /** Submit a pre-signed [DAITx] to the network. */
+    suspend fun submitTransaction(tx: DAITx): TxSubmitResult =
         request("POST", "/api/tx/submit", TxSubmitResult::class.java, tx)
 
     /**
      * Register a signing key for [address] on the node.
-     * The [proof] must be `POHSigning.createSigningProof(address, privateKeyPem)`.
+     * The [proof] must be `DAISigning.createSigningProof(address, privateKeyPem)`.
      */
     suspend fun registerSigningKey(
         address: String,
@@ -625,9 +624,9 @@ class POHClient(
         return request("POST", "/api/wallet/register-key", com.google.gson.JsonObject::class.java, body)
     }
 
-    /** Register a [KeyPair] from [POHSigning.generateKeyPair]. */
+    /** Register a [KeyPair] from [DAISigning.generateKeyPair]. */
     suspend fun registerKeyPair(keyPair: KeyPair, rotationProof: String? = null): com.google.gson.JsonObject {
-        val proof = POHSigning.createSigningProof(keyPair.address, keyPair.signingPrivateKey)
+        val proof = DAISigning.createSigningProof(keyPair.address, keyPair.signingPrivateKey)
         return registerSigningKey(keyPair.address, keyPair.signingPublicKey, proof, rotationProof)
     }
 
@@ -636,13 +635,13 @@ class POHClient(
         request("GET", "/api/miner/info", MinerInfo::class.java)
 
     /**
-     * Convenience: build, sign, and submit a POH transfer in one call.
+     * Convenience: build, sign, and submit a DAI transfer in one call.
      *
      * ```kotlin
-     * val result = poh.transfer(
+     * val result = dai.transfer(
      *     from      = myAddress,
      *     to        = recipientAddress,
-     *     amountPoh = 5.0,
+     *     amountDai = 5.0,
      *     keyPair   = myKeyPair,
      * )
      * ```
@@ -650,15 +649,15 @@ class POHClient(
     suspend fun transfer(
         from: String,
         to: String,
-        amountPoh: Double,
+        amountDai: Double,
         keyPair: KeyPair,
         fee: Long = 0L,
         memo: String = "",
     ): TxSubmitResult {
         val nonceResp = getNonce(from)
         val nextNonce = (nonceResp.pendingNonce ?: nonceResp.nonce) + 1
-        val tx        = POHSigning.buildTransfer(from, to, amountPoh, nextNonce, fee, memo)
-        val signed    = POHSigning.signTransaction(tx, keyPair)
+        val tx        = DAISigning.buildTransfer(from, to, amountDai, nextNonce, fee, memo)
+        val signed    = DAISigning.signTransaction(tx, keyPair)
         return submitTransaction(signed)
     }
 

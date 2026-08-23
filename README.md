@@ -1,7 +1,7 @@
-# Proof of Human — Android / JVM SDK
+# Decentralized Artificial Intelligence — Android / JVM SDK
 
-Kotlin coroutine-based client for the [Proof of Human](https://proofofhuman.ge) API.
-Scan wallet addresses for human-identity signals, query blockchain state, and sign/submit PoH transactions.
+Kotlin coroutine-based client for the [Decentralized Artificial Intelligence](https://iamai.kg) API.
+Scan wallet addresses for human-identity signals, query blockchain state, and sign/submit DAI transactions.
 
 ---
 
@@ -40,31 +40,31 @@ Requires **Java 17+** and **Kotlin coroutines**.
 import ge.proofofhuman.POHClient
 import ge.proofofhuman.ScanOptions
 
-val poh = POHClient(apiKey = "your-api-key")
+val dai = POHClient(apiKey = "your-api-key")
 
 // Scan a single address
-val scan = poh.scan("0xabc123...")
+val scan = dai.scan("0xabc123...")
 
 // Get the AI brain verdict (polls until ready)
-val verdict = poh.pollBrainVerdict(scan.brainKey!!)
+val verdict = dai.pollBrainVerdict(scan.brainKey!!)
 println("${verdict.verdict} (${verdict.confidence})")   // e.g. "HUMAN (0.93)"
 
 // One-shot convenience
-val result = poh.scanAndVerdict("0xabc123...")
+val result = dai.scanAndVerdict("0xabc123...")
 println(result.verdict.verdict)
 ```
 
 **Bulk scan**
 ```kotlin
-val job = poh.scanBulk(listOf("0xabc...", "0xdef...", "sol1..."))
-val snap = poh.getJob(job.jobId)            // single snapshot
-val done = poh.pollJob(job.jobId)           // blocks until complete
+val job = dai.scanBulk(listOf("0xabc...", "0xdef...", "sol1..."))
+val snap = dai.getJob(job.jobId)            // single snapshot
+val done = dai.pollJob(job.jobId)           // blocks until complete
 done.results.forEach { println(it) }
 ```
 
 **Stream progress**
 ```kotlin
-poh.watchJob(ref.jobId).collect { snapshot ->
+dai.watchJob(ref.jobId).collect { snapshot ->
     println("${snapshot.percent}% (${snapshot.done}/${snapshot.total})")
 }
 ```
@@ -83,21 +83,21 @@ payment.
 import ge.proofofhuman.AskOptions
 
 // Block until the answer arrives
-val answer = poh.askAndWait(
+val answer = dai.askAndWait(
     "What does vitalik.eth write about on Paragraph?",
-    AskOptions(budget = 0.5, walletAddress = "poh1abc...", privateKeyPem = myPrivateKey),
+    AskOptions(budget = 0.5, walletAddress = "dai1abc...", privateKeyPem = myPrivateKey),
 )
 println(answer.nlResponse)
 println(answer.output)          // raw skill output as JsonElement
 
 // Or fire-and-poll manually
-val ref = poh.submitJob(
+val ref = dai.submitJob(
     "What does vitalik.eth write about on Paragraph?",
-    AskOptions(budget = 0.5, walletAddress = "poh1abc...", privateKeyPem = myPrivateKey),
+    AskOptions(budget = 0.5, walletAddress = "dai1abc...", privateKeyPem = myPrivateKey),
 )
-val status = poh.getJobStatus(ref.jobId)    // lightweight status check
-val result = poh.getJobResult(ref.jobId)    // full result once done
-val result = poh.pollJobResult(ref.jobId)   // or poll until it arrives
+val status = dai.getJobStatus(ref.jobId)    // lightweight status check
+val result = dai.getJobResult(ref.jobId)    // full result once done
+val result = dai.pollJobResult(ref.jobId)   // or poll until it arrives
 ```
 
 ## Compute jobs (your own model + dataset)
@@ -109,14 +109,14 @@ never free — `runCompute` always signs a fee payment.
 ```kotlin
 import ge.proofofhuman.ComputeOptions
 
-val ref = poh.runCompute("Summarize the top 5 rows", ComputeOptions(
+val ref = dai.runCompute("Summarize the top 5 rows", ComputeOptions(
     model = "llama3.1:8b",
     dataset = "some-org/some-dataset", // optional
-    budget = 0.5,                      // POH
-    walletAddress = "poh1abc...",
+    budget = 0.5,                      // DAI
+    walletAddress = "dai1abc...",
     privateKeyPem = myPrivateKey,
 ))
-val result = poh.pollJobResult(ref.jobId)
+val result = dai.pollJobResult(ref.jobId)
 println(result.output)
 ```
 
@@ -129,25 +129,25 @@ verify a signature for a key it has never seen.
 ## Wallet / blockchain
 
 ```kotlin
-// Balance (in μPOH — divide by 1_000_000_000 for whole POH)
-val bal = poh.getBalance("poh1abc...")
-println("${bal.balance / 1_000_000_000.0} POH")
+// Balance (in μDAI — divide by 1_000_000_000 for whole DAI)
+val bal = dai.getBalance("dai1abc...")
+println("${bal.balance / 1_000_000_000.0} DAI")
 
 // Nonce (current value; increment by 1 when building a tx)
-val nonceResp = poh.getNonce("poh1abc...")
+val nonceResp = dai.getNonce("dai1abc...")
 println("nonce: ${nonceResp.nonce}")
 
 // Transaction history
-val history = poh.getTransactionHistory("poh1abc...", limit = 20)
+val history = dai.getTransactionHistory("dai1abc...", limit = 20)
 history.entries.forEach { entry ->
     println("${entry.txHash}  delta=${entry.delta}  label=${entry.label}")
 }
 
 // Raw transactions for an address (untyped JsonObject)
-val txs = poh.getTransactions("poh1abc...")
+val txs = dai.getTransactions("dai1abc...")
 
 // Pending mempool transactions
-val pending = poh.getPendingTransactions()
+val pending = dai.getPendingTransactions()
 println("${pending.count} pending txs")
 ```
 
@@ -158,9 +158,9 @@ println("${pending.count} pending txs")
 ### 1. Generate a keypair
 
 ```kotlin
-import ge.proofofhuman.POHSigning
+import ge.proofofhuman.DAISigning
 
-val keyPair = POHSigning.generateKeyPair()
+val keyPair = DAISigning.generateKeyPair()
 // keyPair.signingPrivateKey — PKCS8 PEM, keep secret
 // keyPair.signingPublicKey  — SPKI PEM, share with node
 ```
@@ -168,53 +168,53 @@ val keyPair = POHSigning.generateKeyPair()
 ### 2. Register the public key with the node
 
 ```kotlin
-val proof = POHSigning.createSigningProof(myAddress, keyPair.signingPrivateKey)
-poh.registerSigningKey(myAddress, keyPair.signingPublicKey, proof)
+val proof = DAISigning.createSigningProof(myAddress, keyPair.signingPrivateKey)
+dai.registerSigningKey(myAddress, keyPair.signingPublicKey, proof)
 
 // Or in one call — uses keyPair.address and builds the proof itself
-poh.registerKeyPair(keyPair)
+dai.registerKeyPair(keyPair)
 
 // The address a keypair maps to (from its SPKI PEM public key)
-val addr = POHSigning.deriveAddressFromSigningKey(keyPair.signingPublicKey)
+val addr = DAISigning.deriveAddressFromSigningKey(keyPair.signingPublicKey)
 ```
 
 **Rotating a key** — replacing an already-registered key requires a rotation
 proof signed with the *old* private key:
 
 ```kotlin
-val proof = POHSigning.createRotationProof(myAddress, newKeyPair.signingPublicKey, oldPrivateKeyPem)
-poh.registerKeyPair(newKeyPair, rotationProof = proof)
+val proof = DAISigning.createRotationProof(myAddress, newKeyPair.signingPublicKey, oldPrivateKeyPem)
+dai.registerKeyPair(newKeyPair, rotationProof = proof)
 ```
 
 ### 3. Build, sign, and submit a transaction
 
 ```kotlin
-// Build an unsigned transfer (amountPoh is in whole POH units)
-val nonceResp = poh.getNonce(myAddress)
-val tx = POHSigning.buildTransfer(
+// Build an unsigned transfer (amountDai is in whole DAI units)
+val nonceResp = dai.getNonce(myAddress)
+val tx = DAISigning.buildTransfer(
     from       = myAddress,
     to         = recipientAddress,
-    amountPoh  = 5.0,                   // 5 POH = 5_000_000_000 μPOH
+    amountDai  = 5.0,                   // 5 DAI = 5_000_000_000 μDAI
     nonce      = nonceResp.nonce + 1,
     fee        = 0L,
     memo       = "payment",
 )
 
 // Sign with the keypair
-val signed = POHSigning.signTransaction(tx, keyPair)
+val signed = DAISigning.signTransaction(tx, keyPair)
 
 // Submit
-val result = poh.submitTransaction(signed)
+val result = dai.submitTransaction(signed)
 println("txHash: ${result.txHash}  queueSize: ${result.queueSize}")
 ```
 
 ### Convenience: one-call transfer
 
 ```kotlin
-val result = poh.transfer(
+val result = dai.transfer(
     from      = myAddress,
     to        = recipientAddress,
-    amountPoh = 5.0,
+    amountDai = 5.0,
     keyPair   = keyPair,
     memo      = "payment",
 )
@@ -228,13 +228,13 @@ transfers don't collide.
 ### Sign with explicit PEM strings
 
 ```kotlin
-val signed = POHSigning.signTransaction(tx, privateKeyPem, publicKeyPem)
+val signed = DAISigning.signTransaction(tx, privateKeyPem, publicKeyPem)
 ```
 
 ### Low-level: compute tx hash
 
 ```kotlin
-val hash = POHSigning.computeTxHash(
+val hash = DAISigning.computeTxHash(
     from = myAddress, to = recipient,
     amount = 5_000_000_000L, fee = 0L,
     nonce = 42L, timestamp = System.currentTimeMillis(),
@@ -248,9 +248,9 @@ Used internally by `submitJob`/`runCompute`; exposed for custom flows. The
 payment hash binds the fee to one specific job + miner + amount + nonce.
 
 ```kotlin
-val jobId = POHSigning.generateJobId()   // "job-<millis>-<8 hex>"; fix it before signing
-val hash  = POHSigning.computeJobPaymentHash(jobId, myAddress, minerAddress, 500L, nonce)
-val (txHash, signature) = POHSigning.signJobPayment(
+val jobId = DAISigning.generateJobId()   // "job-<millis>-<8 hex>"; fix it before signing
+val hash  = DAISigning.computeJobPaymentHash(jobId, myAddress, minerAddress, 500L, nonce)
+val (txHash, signature) = DAISigning.signJobPayment(
     jobId, myAddress, minerAddress, 500L, nonce, keyPair.signingPrivateKey,
 )
 // txHash + signature go in the `paymentTx` field of a POST /job request
@@ -262,23 +262,23 @@ val (txHash, signature) = POHSigning.signJobPayment(
 
 ```kotlin
 // Miner details
-val info = poh.getMinerInfo()
+val info = dai.getMinerInfo()
 println("miner=${info.minerAddress}  gasPrice=${info.gasPrice}  queue=${info.queueLength}")
 
 // All available skills
-val skills = poh.listSkills()
+val skills = dai.listSkills()
 skills.forEach { println("${it.id}  ${it.description}") }
 
 // Basic node health
-val node = poh.getNodeInfo()
+val node = dai.getNodeInfo()
 println("node=${node.nodeId}  version=${node.version}  peers=${node.peers}")
 
 // Signal verification methods
-val methods = poh.getMethods()
+val methods = dai.getMethods()
 methods.forEach { println(it.id) }
 
 // Scan pricing (currency is "USDC/USDT")
-val pricing = poh.getPricing(count = 100)
+val pricing = dai.getPricing(count = 100)
 println("${pricing.total} ${pricing.currency} (${pricing.perAddress}/address)")
 ```
 
@@ -290,23 +290,23 @@ The client probes nodes in order and uses the first one that responds. This happ
 automatically on the first request.
 
 ```kotlin
-val poh = POHClient(
+val dai = POHClient(
     nodes = listOf(
-        "https://miner.poh.ge",
-        "https://proofofhuman.ge",
-        "https://poh.assetux.com",
+        "https://miner.iamai.kg",
+        "https://iamai.kg",
+        "https://miner.iamai.kg",
     ),
     apiKey = "your-api-key",
 )
 
 // Which node is active after the first request?
-println(poh.activeNode)
+println(dai.activeNode)
 ```
 
 The default node list (used when neither `baseUrl` nor `nodes` is supplied) is:
-- `https://miner.poh.ge`
-- `https://proofofhuman.ge`
-- `https://poh.assetux.com`
+- `https://miner.iamai.kg`
+- `https://iamai.kg`
+- `https://miner.iamai.kg`
 
 ### Local miner routing
 
@@ -316,7 +316,7 @@ still use the public nodes; without it, writes to a non-loopback node fail with
 a 403 `HttpException` explaining the requirement.
 
 ```kotlin
-val poh = POHClient(localBaseUrl = "http://127.0.0.1:3456")
+val dai = POHClient(localBaseUrl = "http://127.0.0.1:3456")
 ```
 
 ---
@@ -346,18 +346,18 @@ if (ChatCrypto.isEnvelope(v, epk, ct)) { /* it's a sealed envelope */ }
 
 ## Error handling
 
-All errors are subclasses of `POHException`:
+All errors are subclasses of `DAIException`:
 
 ```kotlin
 try {
-    val scan = poh.scan("0xabc...")
-} catch (e: POHException.HttpException) {
+    val scan = dai.scan("0xabc...")
+} catch (e: DAIException.HttpException) {
     println("API error ${e.statusCode}: ${e.body}")
-} catch (e: POHException.NetworkException) {
+} catch (e: DAIException.NetworkException) {
     println("No connection: ${e.message}")
-} catch (e: POHException.JobTimedOutException) {
+} catch (e: DAIException.JobTimedOutException) {
     println("Job ${e.jobId} timed out (was: ${e.lastStatus})")
-} catch (e: POHException) {
+} catch (e: DAIException) {
     println("Error: ${e.message}")
 }
 ```
@@ -389,19 +389,19 @@ Apache License 2.0
 
 ## Stablecoins (multi-currency) — protocol notes
 
-The chain now carries five regional stablecoins alongside POH: `aiGEL`,
+The chain now carries five regional stablecoins alongside DAI: `aiGEL`,
 `aiKGS`, `aiAMD`, `aiETB`, `aiBTN` (displayed αιGEL …). They use **2 decimals**
-(1 unit = 100 raw); POH keeps 9 (1 POH = 1e9 μPOH).
+(1 unit = 100 raw); DAI keeps 9 (1 DAI = 1e9 μDAI).
 
 Wire protocol (implement when adding native support to this SDK):
 
-- `PohTransaction` gains an optional `currency` field. **Hash preimage rule:**
+- `DAITransaction` gains an optional `currency` field. **Hash preimage rule:**
   `currency` is appended after `memo` in the signed JSON payload ONLY when
-  non-POH — a POH transaction hashes byte-identically to the historical shape
+  non-DAI — a DAI transaction hashes byte-identically to the historical shape
   and must NOT carry the key at all.
 - Job payment hash: `currency` is the SIXTH key of
   `{jobId,requesterAddress,minerAddress,amount,nonce,currency}` ONLY when
-  non-POH.
+  non-DAI.
 - `GET /api/assets` lists the registry (tickers, decimals, display names, gas
   prices). `GET /api/wallet/balance` adds `assets: { ticker: {raw, display} }`.
 - Job payloads accept `currency`; the miner receives exactly the currency paid.

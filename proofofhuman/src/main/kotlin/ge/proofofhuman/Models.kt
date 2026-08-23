@@ -14,7 +14,7 @@ data class ScanOptions(
     val walletAddress: String? = null,
 )
 
-/** Polling / streaming behaviour for [POHClient.pollJob] and [POHClient.watchJob]. */
+/** Polling / streaming behaviour for [DAIClient.pollJob] and [DAIClient.watchJob]. */
 data class PollOptions(
     /** Milliseconds between status-check requests. Default 1500. */
     val intervalMs: Long = 1_500L,
@@ -24,7 +24,7 @@ data class PollOptions(
     val onProgress: ((JobStatus) -> Unit)? = null,
 )
 
-/** Options for [POHClient.pollBrainVerdict]. */
+/** Options for [DAIClient.pollBrainVerdict]. */
 data class BrainPollOptions(
     /** Milliseconds between brain verdict checks. Default 1500. */
     val intervalMs: Long = 1_500L,
@@ -59,13 +59,13 @@ data class OfacMatch(
 
 // ── Single-address scan ────────────────────────────────────────────────────────
 
-/** Response from [POHClient.scan] (single address, synchronous). */
+/** Response from [DAIClient.scan] (single address, synchronous). */
 data class ScanResponse(
-    /** Raw per-method results. Aggregate via [POHClient.getBrainVerdict]. */
+    /** Raw per-method results. Aggregate via [DAIClient.getBrainVerdict]. */
     val result: List<MethodResult>,
     val count: Int,
     val source: String?,
-    /** Pass to [POHClient.getBrainVerdict] once ready. */
+    /** Pass to [DAIClient.getBrainVerdict] once ready. */
     val brainKey: String?,
     val freeScansLeft: Int?,
     /** Set when the address (or a direct counterparty) is on the OFAC SDN list. */
@@ -83,7 +83,7 @@ data class BulkScanRef(
     val freeScansLeft: Int?,
 )
 
-/** Full job snapshot from [POHClient.getJob] / [POHClient.pollJob]. */
+/** Full job snapshot from [DAIClient.getJob] / [DAIClient.pollJob]. */
 data class JobStatus(
     val jobId: String,
     /** One of: `queued`, `processing`, `done`, `error`. */
@@ -101,7 +101,7 @@ data class JobStatus(
 
 // ── AI brain verdict ───────────────────────────────────────────────────────────
 
-/** AI verdict returned by [POHClient.getBrainVerdict] after scan completes. */
+/** AI verdict returned by [DAIClient.getBrainVerdict] after scan completes. */
 data class BrainVerdict(
     /** `pending` | `done` | `error` | `not_found` */
     val status: String,
@@ -114,7 +114,7 @@ data class BrainVerdict(
 
 // ── Signal methods ─────────────────────────────────────────────────────────────
 
-/** A registered signal verification method from [POHClient.getMethods]. */
+/** A registered signal verification method from [DAIClient.getMethods]. */
 data class Method(
     val id: String,
     /** `evm` | `solana` | `rest` */
@@ -130,7 +130,7 @@ data class Method(
 
 // ── Scan + verdict combined ────────────────────────────────────────────────────
 
-/** Combined result of [POHClient.scanAndVerdict]. */
+/** Combined result of [DAIClient.scanAndVerdict]. */
 data class ScanWithVerdict(
     val scan:    ScanResponse,
     val verdict: BrainVerdict,
@@ -156,7 +156,7 @@ data class PricingResponse(
 // ── Natural language jobs ──────────────────────────────────────────────────────
 
 data class AskOptions(
-    /** Budget in POH units (e.g. 0.5 = 0.5 POH). Converted to μPOH internally. */
+    /** Budget in DAI units (e.g. 0.5 = 0.5 DAI). Converted to μDAI internally. */
     val budget: Double = 0.0,
     /** Wallet address to charge budget from. Required when budget > 0. */
     val walletAddress: String? = null,
@@ -199,7 +199,7 @@ data class ChatOptions(
     val requesterAddress: String? = null,
 )
 
-/** Reply from [POHClient.chat]. */
+/** Reply from [DAIClient.chat]. */
 data class ChatResult(
     val type: String? = null,
     val message: String = "",
@@ -218,7 +218,7 @@ data class ChatResult(
 data class ComputeOptions(
     /** Which model to run, e.g. "qwen3-1.7b", "qwen3vl-2b". */
     val model: String,
-    /** Fee in POH (e.g. 0.5 = 0.5 POH). Required — compute jobs are never free. */
+    /** Fee in DAI (e.g. 0.5 = 0.5 DAI). Required — compute jobs are never free. */
     val budget: Double,
     /** Wallet address paying the fee. */
     val walletAddress: String,
@@ -275,7 +275,7 @@ data class AskJobResult(
 
 // ── Node info ──────────────────────────────────────────────────────────────────
 
-/** Metadata about a PoH miner node. */
+/** Metadata about a DAI miner node. */
 data class NodeInfo(
     val status: String,
     val nodeId: String?,
@@ -299,14 +299,14 @@ data class Skill(
 
 // ── Wallet / blockchain ────────────────────────────────────────────────────────
 
-/** Wallet balance returned by [POHClient.getBalance]. */
+/** Wallet balance returned by [DAIClient.getBalance]. */
 data class WalletBalance(
     val address: String,
-    /** Balance in μPOH (1 POH = 1_000_000_000 μPOH). */
+    /** Balance in μDAI (1 DAI = 1_000_000_000 μDAI). */
     val balance: Long,
 )
 
-/** Account nonce returned by [POHClient.getNonce]. Increment by 1 when building a transaction. */
+/** Account nonce returned by [DAIClient.getNonce]. Increment by 1 when building a transaction. */
 data class AccountNonce(
     val address: String,
     val nonce: Long,
@@ -322,22 +322,22 @@ data class TxHistoryEntry(
     val label: String,
 )
 
-/** Transaction history returned by [POHClient.getTransactionHistory]. */
+/** Transaction history returned by [DAIClient.getTransactionHistory]. */
 data class TxHistoryResult(
     val address: String,
     val entries: List<TxHistoryEntry>,
 )
 
 /**
- * A signed or unsigned PoH transaction.
+ * A signed or unsigned DAI transaction.
  *
- * Build with [POHSigning.buildTransfer], sign with [POHSigning.signTransaction],
- * then submit with [POHClient.submitTransaction].
+ * Build with [DAISigning.buildTransfer], sign with [DAISigning.signTransaction],
+ * then submit with [DAIClient.submitTransaction].
  */
-data class PohTx(
+data class DAITx(
     val from: String,
     val to: String,
-    /** Amount in μPOH (1 POH = 1_000_000_000 μPOH). */
+    /** Amount in μDAI (1 DAI = 1_000_000_000 μDAI). */
     val amount: Long,
     val fee: Long,
     val nonce: Long,
@@ -348,20 +348,20 @@ data class PohTx(
     val signingPublicKey: String? = null,
 )
 
-/** Result returned by [POHClient.submitTransaction]. */
+/** Result returned by [DAIClient.submitTransaction]. */
 data class TxSubmitResult(
     val ok: Boolean,
     val txHash: String,
     val queueSize: Long,
 )
 
-/** Result returned by [POHClient.getPendingTransactions]. */
+/** Result returned by [DAIClient.getPendingTransactions]. */
 data class PendingTxResult(
     val txs: List<com.google.gson.JsonElement>,
     val count: Long,
 )
 
-/** Miner information returned by [POHClient.getMinerInfo]. */
+/** Miner information returned by [DAIClient.getMinerInfo]. */
 data class MinerInfo(
     val minerAddress: String,
     val gasPrice: Long,
@@ -370,12 +370,12 @@ data class MinerInfo(
     val reputation: Double,
 )
 
-/** An Ed25519 keypair for signing PoH transactions. */
+/** An Ed25519 keypair for signing DAI transactions. */
 data class KeyPair(
     /** PKCS8 PEM private key. Keep secret — used to sign transactions. */
     val signingPrivateKey: String,
-    /** SPKI PEM public key. Register with the node via [POHClient.registerSigningKey]. */
+    /** SPKI PEM public key. Register with the node via [DAIClient.registerSigningKey]. */
     val signingPublicKey: String,
-    /** Canonical `poh…` address derived from [signingPublicKey]. */
+    /** Canonical `dai…` address derived from [signingPublicKey]. */
     val address: String,
 )

@@ -13,16 +13,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-class POHClientTest {
+class DAIClientTest {
 
     private lateinit var server: MockWebServer
-    private lateinit var client: POHClient
+    private lateinit var client: DAIClient
 
     @BeforeTest
     fun setUp() {
         server = MockWebServer()
         server.start()
-        client = POHClient(baseUrl = server.url("/").toString().trimEnd('/'))
+        client = DAIClient(baseUrl = server.url("/").toString().trimEnd('/'))
     }
 
     @AfterTest
@@ -54,7 +54,7 @@ class POHClientTest {
     @Test
     fun `scan throws HttpException on 401`() = runTest {
         server.enqueue(MockResponse().setBody("""{"error":"Invalid API key"}""").setResponseCode(401))
-        val ex = assertFailsWith<POHException.HttpException> { client.scan("0xabc") }
+        val ex = assertFailsWith<DAIException.HttpException> { client.scan("0xabc") }
         assertEquals(401, ex.statusCode)
         assertTrue("Invalid API key" in ex.body)
     }
@@ -75,7 +75,7 @@ class POHClientTest {
 
     @Test
     fun `scanBulk throws EmptyInputsException on empty list`() = runTest {
-        assertFailsWith<POHException.EmptyInputsException> {
+        assertFailsWith<DAIException.EmptyInputsException> {
             client.scanBulk(emptyList())
         }
     }
@@ -129,7 +129,7 @@ class POHClientTest {
                  "results":[],"errors":[],"createdAt":"2024-01-01T00:00:00Z","completedAt":null}
             """.trimIndent()))
         }
-        val ex = assertFailsWith<POHException.JobTimedOutException> {
+        val ex = assertFailsWith<DAIException.JobTimedOutException> {
             client.pollJob("j", PollOptions(intervalMs = 0L, timeoutMs = 1L))
         }
         assertEquals("j", ex.jobId)
@@ -196,7 +196,7 @@ class POHClientTest {
     @Test
     fun `getNodeInfo parses node metadata`() = runTest {
         server.enqueue(MockResponse().setBody("""
-            {"status":"ok","nodeId":"node-42","version":"1.2.0","walletAddress":"poh123","peers":3}
+            {"status":"ok","nodeId":"node-42","version":"1.2.0","walletAddress":"dai123","peers":3}
         """.trimIndent()))
 
         val info = client.getNodeInfo()
@@ -224,11 +224,11 @@ class POHClientTest {
     @Test
     fun `getMinerInfo parses miner metadata`() = runTest {
         server.enqueue(MockResponse().setBody("""
-            {"minerAddress":"poh-miner-1","gasPrice":1000,"model":"llama-3","queueLength":2,"reputation":4.5}
+            {"minerAddress":"dai-miner-1","gasPrice":1000,"model":"llama-3","queueLength":2,"reputation":4.5}
         """.trimIndent()))
 
         val info = client.getMinerInfo()
-        assertEquals("poh-miner-1", info.minerAddress)
+        assertEquals("dai-miner-1", info.minerAddress)
         assertEquals("llama-3", info.model)
         assertEquals(2, info.queueLength)
     }
@@ -236,11 +236,11 @@ class POHClientTest {
     // ── getBalance ────────────────────────────────────────────────────────────
 
     @Test
-    fun `getBalance returns address and μPOH balance`() = runTest {
-        server.enqueue(MockResponse().setBody("""{"address":"poh123","balance":5000000000}"""))
+    fun `getBalance returns address and μDAI balance`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"address":"dai123","balance":5000000000}"""))
 
-        val bal = client.getBalance("poh123")
-        assertEquals("poh123", bal.address)
+        val bal = client.getBalance("dai123")
+        assertEquals("dai123", bal.address)
         assertEquals(5_000_000_000L, bal.balance)
     }
 
@@ -248,10 +248,10 @@ class POHClientTest {
 
     @Test
     fun `getNonce returns current nonce`() = runTest {
-        server.enqueue(MockResponse().setBody("""{"address":"poh123","nonce":7}"""))
+        server.enqueue(MockResponse().setBody("""{"address":"dai123","nonce":7}"""))
 
-        val n = client.getNonce("poh123")
-        assertEquals("poh123", n.address)
+        val n = client.getNonce("dai123")
+        assertEquals("dai123", n.address)
         assertEquals(7L, n.nonce)
     }
 
@@ -260,13 +260,13 @@ class POHClientTest {
     @Test
     fun `getTransactionHistory returns entries`() = runTest {
         server.enqueue(MockResponse().setBody("""
-            {"address":"poh123","entries":[
+            {"address":"dai123","entries":[
                 {"height":100,"delta":1000000000,"txHash":"abc","ts":1700000000,"label":"transfer"}
             ]}
         """.trimIndent()))
 
-        val hist = client.getTransactionHistory("poh123")
-        assertEquals("poh123", hist.address)
+        val hist = client.getTransactionHistory("dai123")
+        assertEquals("dai123", hist.address)
         assertEquals(1, hist.entries.size)
         assertEquals(1_000_000_000L, hist.entries.first().delta)
         assertEquals("transfer", hist.entries.first().label)
@@ -288,8 +288,8 @@ class POHClientTest {
     fun `submitTransaction posts signed tx and returns txHash`() = runTest {
         server.enqueue(MockResponse().setBody("""{"ok":true,"txHash":"cafebabe","queueSize":1}"""))
 
-        val tx = PohTx(
-            from = "pohA", to = "pohB", amount = 1_000_000_000L, fee = 0L,
+        val tx = DAITx(
+            from = "daiA", to = "daiB", amount = 1_000_000_000L, fee = 0L,
             nonce = 1L, timestamp = System.currentTimeMillis(), memo = "",
             txHash = "cafebabe", signature = "sig", signingPublicKey = "pub",
         )
@@ -304,7 +304,7 @@ class POHClientTest {
     fun `registerSigningKey posts key and proof`() = runTest {
         server.enqueue(MockResponse().setBody("""{"success":true}"""))
 
-        val body = client.registerSigningKey("pohA", "pubkey-pem", "proof-b64")
+        val body = client.registerSigningKey("daiA", "pubkey-pem", "proof-b64")
         assertNotNull(body)
         val req = server.takeRequest()
         assertEquals("/api/wallet/register-key", req.path)
@@ -324,10 +324,10 @@ class POHClientTest {
     }
 
     @Test
-    fun `submitJob throws POHException when no skill matched`() = runTest {
+    fun `submitJob throws DAIException when no skill matched`() = runTest {
         server.enqueue(MockResponse().setBody("""{"type":"chat","reason":"No skill matched"}"""))
 
-        val ex = assertFailsWith<POHException.HttpException> {
+        val ex = assertFailsWith<DAIException.HttpException> {
             client.submitJob("random question")
         }
         assertEquals(422, ex.statusCode)
@@ -337,22 +337,22 @@ class POHClientTest {
     fun `submitJob throws when budget positive without private key`() = runTest {
         server.enqueue(MockResponse().setBody("""{"type":"skill","skillId":"sk-sum","input":{}}"""))
 
-        val ex = assertFailsWith<POHException.HttpException> {
-            client.submitJob("Summarise this", AskOptions(budget = 0.5, walletAddress = "pohAlice"))
+        val ex = assertFailsWith<DAIException.HttpException> {
+            client.submitJob("Summarise this", AskOptions(budget = 0.5, walletAddress = "daiAlice"))
         }
         assertEquals(402, ex.statusCode)
     }
 
     @Test
     fun `submitJob signs a nonce-bound payment proof when budget positive`() = runTest {
-        val kp = POHSigning.generateKeyPair()
+        val kp = DAISigning.generateKeyPair()
         server.enqueue(MockResponse().setBody("""{"type":"skill","skillId":"sk-sum","input":{}}"""))
-        server.enqueue(MockResponse().setBody("""{"minerAddress":"pohMiner","gasPrice":1,"model":"qwen2.5:1.5b","queueLength":0,"reputation":1.0}"""))
-        server.enqueue(MockResponse().setBody("""{"address":"pohAlice","nonce":3}"""))
+        server.enqueue(MockResponse().setBody("""{"minerAddress":"daiMiner","gasPrice":1,"model":"qwen2.5:1.5b","queueLength":0,"reputation":1.0}"""))
+        server.enqueue(MockResponse().setBody("""{"address":"daiAlice","nonce":3}"""))
         server.enqueue(MockResponse().setBody("""{"jobId":"jnl-1","status":"queued","statusUrl":null,"resultUrl":null}"""))
 
         val ref = client.submitJob("Summarise this", AskOptions(
-            budget = 0.5, walletAddress = "pohAlice", privateKeyPem = kp.signingPrivateKey,
+            budget = 0.5, walletAddress = "daiAlice", privateKeyPem = kp.signingPrivateKey,
         ))
         assertEquals("jnl-1", ref.jobId)
 
@@ -362,7 +362,7 @@ class POHClientTest {
         val jobReq = server.takeRequest()
         val body = jobReq.body.readUtf8()
         assertTrue(body.contains("\"maxBudget\":500000000"))
-        assertTrue(body.contains("\"requesterAddress\":\"pohAlice\""))
+        assertTrue(body.contains("\"requesterAddress\":\"daiAlice\""))
         assertTrue(body.contains("\"paymentTx\""))
         assertTrue(body.contains("\"txHash\""))
         assertTrue(body.contains("\"signature\""))
@@ -372,10 +372,10 @@ class POHClientTest {
 
     @Test
     fun `runCompute throws when budget not positive`() = runTest {
-        val kp = POHSigning.generateKeyPair()
-        val ex = assertFailsWith<POHException.HttpException> {
+        val kp = DAISigning.generateKeyPair()
+        val ex = assertFailsWith<DAIException.HttpException> {
             client.runCompute("hi", ComputeOptions(
-                model = "qwen2.5:1.5b", budget = 0.0, walletAddress = "pohAlice", privateKeyPem = kp.signingPrivateKey,
+                model = "qwen2.5:1.5b", budget = 0.0, walletAddress = "daiAlice", privateKeyPem = kp.signingPrivateKey,
             ))
         }
         assertEquals(402, ex.statusCode)
@@ -383,14 +383,14 @@ class POHClientTest {
 
     @Test
     fun `runCompute signs payment and posts model and dataset`() = runTest {
-        val kp = POHSigning.generateKeyPair()
-        server.enqueue(MockResponse().setBody("""{"minerAddress":"pohMiner","gasPrice":1,"model":"qwen2.5:1.5b","queueLength":0,"reputation":1.0}"""))
-        server.enqueue(MockResponse().setBody("""{"address":"pohAlice","nonce":7}"""))
+        val kp = DAISigning.generateKeyPair()
+        server.enqueue(MockResponse().setBody("""{"minerAddress":"daiMiner","gasPrice":1,"model":"qwen2.5:1.5b","queueLength":0,"reputation":1.0}"""))
+        server.enqueue(MockResponse().setBody("""{"address":"daiAlice","nonce":7}"""))
         server.enqueue(MockResponse().setBody("""{"jobId":"jc-1","status":"queued","statusUrl":null,"resultUrl":null}"""))
 
         val ref = client.runCompute("Summarize the top rows", ComputeOptions(
             model = "llama3.1:8b", dataset = "some-org/some-dataset",
-            budget = 0.5, walletAddress = "pohAlice", privateKeyPem = kp.signingPrivateKey,
+            budget = 0.5, walletAddress = "daiAlice", privateKeyPem = kp.signingPrivateKey,
         ))
         assertEquals("jc-1", ref.jobId)
 

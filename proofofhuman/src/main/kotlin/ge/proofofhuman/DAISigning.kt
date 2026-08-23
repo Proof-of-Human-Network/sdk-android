@@ -8,12 +8,12 @@ import java.security.spec.PKCS8EncodedKeySpec
 import java.util.Base64
 
 /**
- * Ed25519 signing utilities for PoH transactions.
+ * Ed25519 signing utilities for DAI transactions.
  *
- * Key format: PKCS8 PEM private key, SPKI PEM public key — matching the PoH node
+ * Key format: PKCS8 PEM private key, SPKI PEM public key — matching the DAI node
  * and the JS/Python SDKs.
  */
-object POHSigning {
+object DAISigning {
 
     // ── PEM helpers ───────────────────────────────────────────────────────────
 
@@ -33,18 +33,18 @@ object POHSigning {
     // ── Key generation ────────────────────────────────────────────────────────
 
     /**
-     * Generate a fresh Ed25519 keypair compatible with the PoH node.
+     * Generate a fresh Ed25519 keypair compatible with the DAI node.
      *
      * ```kotlin
-     * val kp = POHSigning.generateKeyPair()
-     * poh.registerSigningKey(myAddress, kp.signingPublicKey, POHSigning.createSigningProof(myAddress, kp.signingPrivateKey))
+     * val kp = DAISigning.generateKeyPair()
+     * dai.registerSigningKey(myAddress, kp.signingPublicKey, DAISigning.createSigningProof(myAddress, kp.signingPrivateKey))
      * ```
      */
     fun deriveAddressFromSigningKey(signingPublicKey: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(signingPublicKey.toByteArray(Charsets.UTF_8))
         val hex = digest.joinToString("") { "%02x".format(it) }
-        return "poh" + hex.take(40)
+        return "dai" + hex.take(40)
     }
 
     fun generateKeyPair(): KeyPair {
@@ -62,7 +62,7 @@ object POHSigning {
 
     /**
      * Sign an arbitrary UTF-8 message with an Ed25519 private key (PKCS8 PEM).
-     * Returns a base64-encoded signature, matching the PoH node's signature format.
+     * Returns a base64-encoded signature, matching the DAI node's signature format.
      */
     fun signData(message: String, privateKeyPem: String): String {
         val kf   = KeyFactory.getInstance("Ed25519")
@@ -75,7 +75,7 @@ object POHSigning {
     }
 
     /**
-     * Build the proof needed by [POHClient.registerSigningKey].
+     * Build the proof needed by [DAIClient.registerSigningKey].
      *
      * The proof is a base64 signature of the wallet address, proving ownership
      * of the private key corresponding to the public key being registered.
@@ -190,27 +190,27 @@ object POHSigning {
     }
 
     /**
-     * Build an unsigned PoH transfer transaction.
+     * Build an unsigned DAI transfer transaction.
      *
-     * @param from       Sender address (`poh...`).
+     * @param from       Sender address (`dai...`).
      * @param to         Recipient address.
-     * @param amountPoh  Amount in POH (e.g. 1.5 → 1_500_000_000 μPOH).
-     * @param nonce      Sender's current nonce + 1. Fetch via [POHClient.getNonce].
-     * @param fee        Miner fee in μPOH (default 0).
+     * @param amountDai  Amount in DAI (e.g. 1.5 → 1_500_000_000 μDAI).
+     * @param nonce      Sender's current nonce + 1. Fetch via [DAIClient.getNonce].
+     * @param fee        Miner fee in μDAI (default 0).
      * @param memo       Optional memo string.
      */
     fun buildTransfer(
         from: String,
         to: String,
-        amountPoh: Double,
+        amountDai: Double,
         nonce: Long,
         fee: Long = 0L,
         memo: String = "",
-    ): PohTx {
-        val amount    = (amountPoh * 1_000_000_000).toLong()
+    ): DAITx {
+        val amount    = (amountDai * 1_000_000_000).toLong()
         val timestamp = System.currentTimeMillis()
         val txHash    = computeTxHash(from, to, amount, fee, nonce, timestamp, memo)
-        return PohTx(
+        return DAITx(
             from      = from,
             to        = to,
             amount    = amount,
@@ -225,12 +225,12 @@ object POHSigning {
     /**
      * Sign a transaction built with [buildTransfer].
      *
-     * After signing, submit via [POHClient.submitTransaction].
+     * After signing, submit via [DAIClient.submitTransaction].
      *
      * @param tx      Unsigned transaction from [buildTransfer].
      * @param keyPair Ed25519 keypair from [generateKeyPair] (both keys required).
      */
-    fun signTransaction(tx: PohTx, keyPair: KeyPair): PohTx {
+    fun signTransaction(tx: DAITx, keyPair: KeyPair): DAITx {
         require(tx.txHash != null) { "tx.txHash is null — call buildTransfer() first" }
         val signature = signData(tx.txHash, keyPair.signingPrivateKey)
         return tx.copy(
@@ -246,7 +246,7 @@ object POHSigning {
      * @param privateKeyPem PKCS8 PEM private key.
      * @param publicKeyPem  SPKI PEM public key (must match the private key).
      */
-    fun signTransaction(tx: PohTx, privateKeyPem: String, publicKeyPem: String): PohTx {
+    fun signTransaction(tx: DAITx, privateKeyPem: String, publicKeyPem: String): DAITx {
         require(tx.txHash != null) { "tx.txHash is null — call buildTransfer() first" }
         val signature = signData(tx.txHash, privateKeyPem)
         return tx.copy(

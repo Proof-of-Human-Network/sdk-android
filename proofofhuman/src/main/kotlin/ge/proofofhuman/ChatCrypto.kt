@@ -13,19 +13,19 @@ import org.bouncycastle.crypto.params.X25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.X25519PublicKeyParameters
 
 /**
- * chat-crypto — portable public-job chat encryption for the POH Android/JVM SDK.
+ * chat-crypto — portable public-job chat encryption for the DAI Android/JVM SDK.
  *
  * Public compute jobs are raced by miners the requester doesn't control, so the on-chain
  * record of the prompt/reply is sealed to the requester's X25519 key:
  *
  *     X25519 (ECDH) -> HKDF-SHA256 -> AES-256-GCM
  *
- * Byte-identical to the node reference (poh-miner src/security/chat-crypto.js, verified
+ * Byte-identical to the node reference (dai-miner src/security/chat-crypto.js, verified
  * round-trip) and the JS/Python/Rust SDKs. See CHAT-CRYPTO.md for the wire format.
  */
 object ChatCrypto {
-    private val SEAL_INFO = "poh-chat-seal-v1".toByteArray()
-    private val SCALAR_INFO = "poh-x25519-v1".toByteArray()
+    private val SEAL_INFO = "dai-chat-seal-v1".toByteArray()
+    private val SCALAR_INFO = "dai-x25519-v1".toByteArray()
     private val rng = SecureRandom()
 
     /** A wallet's raw 32-byte X25519 encryption keypair (base64). */
