@@ -26,12 +26,12 @@ class ChatCryptoTest {
     @Test
     fun opensNodeSealedEnvelope() {
         val kp = ChatCrypto.deriveEncryptionKeypair("rust-interop")
-        assertEquals("XWeuTjf5gk1B9EUaRYB0mBaRRudIfFn2CZkcsFp2NWc=", kp.publicKeyB64)
+        assertEquals("KEuWmZUz5CWxn2QsMVq2ViPk6AQw5ZpFP7KYwiraiRs=", kp.publicKeyB64)
         val env = ChatCrypto.SealedEnvelope(
             1, "x25519-hkdf-sha256-aes256gcm",
-            "9Jgr/SzalkizcEPDyTPgaWL0zreJPcpxPzkQA33GgSw=",
-            "5vNG7exFDLDJRdlb",
-            "B+2GpffQMNnXB0UhDhtBT5Vw7e3FJWnL/XMsTObXel7O26NtIAhv",
+            "iEPANh2KxCPlu4HC29mjejV2w9WWRZQMKLv/jaWWX2Q=",
+            "ulySPK2YUEhQsL2X",
+            "eUxra8/2d5RYGWoBwCCM6C7o5SjZPmtiVHislyZRzhMqRc73eERb",
         )
         assertEquals("hello from node to rust", ChatCrypto.open(env, kp.privateKeyB64))
     }

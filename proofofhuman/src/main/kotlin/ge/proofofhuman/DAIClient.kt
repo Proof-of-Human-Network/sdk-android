@@ -114,7 +114,8 @@ class DAIClient(
         val m = method.uppercase()
         if (m == "GET" || m == "HEAD" || m == "OPTIONS") return false
         val p = path.split("?").first()
-        return !(m == "POST" && p == "/gossip")
+        // /gossip and /api/estimate (read-only) may go to any node
+        return !(m == "POST" && (p == "/gossip" || p == "/api/estimate"))
     }
 
     private fun isLoopback(url: String): Boolean {
@@ -451,6 +452,39 @@ class DAIClient(
             code = raw.get("code")?.asString,
             raw = raw,
         )
+    }
+
+    // ── Fee estimation ─────────────────────────────────────────────────────────
+
+    /**
+     * Estimate what a job or chat request will cost — the `eth_estimateGas` of DAI.
+     *
+     * Send the same fields you would submit (prompt, attachments, a skill, MCP tools, a
+     * dataset). The node sizes the whole pipeline — attachment text, skill and MCP output,
+     * dataset rows, planner and synthesis calls — and returns the AI tokens it will use, the
+     * minimum fee it accepts, and a recommended budget. Read-only: nothing runs or is paid.
+     *
+     * Sizes that only exist after running (what a skill fetches) come back as [TokenRange]s
+     * bounded by the executor's own caps, each tagged `measured` / `bounded` / `assumed`
+     * in [EstimateResult.breakdown].
+     *
+     * Needs a node newer than 0.4.36 (it adds `POST /api/estimate`); older nodes answer 404.
+     *
+     * ```
+     * val est = dai.estimate("Summarise this report",
+     *     EstimateOptions(attachments = listOf(ChatAttachment(name = "report.md", content = text))))
+     * est.fees.minimum.raw       // μDAI the node accepts, at minimum
+     * est.fees.recommended.raw   // μDAI to escrow (covers the worst case)
+     * // runCompute takes DAI; estimate returns μDAI:
+     * val budgetDai = (est.fees.recommended.raw ?: 0) / 1e9
+     * ```
+     */
+    suspend fun estimate(prompt: String? = null, options: EstimateOptions = EstimateOptions()): EstimateResult {
+        val hasBody = !prompt.isNullOrEmpty() || !options.messages.isNullOrEmpty() || !options.attachments.isNullOrEmpty()
+        if (!hasBody && !(options.type == "skill" && options.skillId != null)) {
+            throw DAIException.HttpException(400, "estimate: prompt, messages or attachments required")
+        }
+        return request("POST", "/api/estimate", EstimateResult::class.java, options.toBody(prompt))
     }
 
     /** List Hugging Face datasets installed on the miner. */

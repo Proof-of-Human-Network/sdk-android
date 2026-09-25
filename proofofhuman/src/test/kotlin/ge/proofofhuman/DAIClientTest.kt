@@ -457,4 +457,100 @@ class DAIClientTest {
         val r = client.askAndWait("What is 2+2?", askOptions = AskOptions(), pollOptions = PollOptions(intervalMs = 0L))
         assertEquals("Answer", r.nlResponse)
     }
+
+    // ── estimate ──────────────────────────────────────────────────────────────
+
+    private val estimateBody = """
+        {
+          "ok": true, "type": "compute", "target": "job", "model": "qwen3-1.7b", "currency": "DAI", "gasPrice": 1,
+          "route": {"mode": "routed-skill", "predicted": true, "reason": "skill:web_search", "skillId": "web_search"},
+          "tokens": {
+            "prompt": {"min": 542, "max": 2042}, "output": {"min": 1, "max": 512},
+            "skillCompute": {"min": 10, "max": 1050}, "total": {"min": 553, "max": 3604}
+          },
+          "calls": [{"purpose": "skill-answer", "promptTokens": {"min": 542, "max": 2042}, "outputTokens": {"min": 1, "max": 512}}],
+          "breakdown": [{"id": "skill:web_search", "kind": "skill", "ref": "web_search", "tokens": {"min": 0, "max": 1500}, "basis": "bounded"}],
+          "fees": {
+            "currency": "DAI",
+            "minimum": {"tokens": 990, "raw": 990, "currency": "DAI", "gate": "/job"},
+            "recommended": {"tokens": 3604, "raw": 3604, "currency": "DAI"}
+          },
+          "outputCap": {"budgetCapApplies": false, "note": "routed pipelines are not capped by the budget"},
+          "warnings": ["routing is predicted"]
+        }
+    """.trimIndent()
+
+    @Test
+    fun `estimate posts the job fields and parses the result`() = runTest {
+        server.enqueue(MockResponse().setBody(estimateBody))
+        // No localBaseUrl: estimate is read-only and allowed on any node.
+        val est = client.estimate(
+            "search the web: ai news",
+            EstimateOptions(
+                skillId = "web_search", maxOutputTokens = 200,
+                attachments = listOf(ChatAttachment(name = "n.md", content = "hi")),
+            ),
+        )
+        val req = server.takeRequest()
+        assertEquals("POST", req.method)
+        assertEquals("/api/estimate", req.path)
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("\"prompt\":\"search the web: ai news\""), body)
+        assertTrue(body.contains("\"skillId\":\"web_search\""), body)
+        assertTrue(body.contains("\"maxOutputTokens\":200"), body)
+        assertFalse(body.contains("\"route\""), body)   // default routing is not sent
+
+        assertEquals("routed-skill", est.route.mode)
+        assertTrue(est.route.predicted)
+        assertEquals(3604L, est.tokens.total.max)
+        assertEquals(10L, est.tokens.skillCompute.min)
+        assertEquals(990L, est.fees.minimum.raw)
+        assertEquals("/job", est.fees.minimum.gate)
+        assertEquals(3604L, est.fees.recommended.raw)
+        assertEquals("bounded", est.breakdown.first().basis)
+        assertEquals(2042L, est.calls.first().promptTokens.max)
+        assertFalse(est.outputCap.budgetCapApplies)
+        assertEquals(listOf("routing is predicted"), est.warnings)
+    }
+
+    @Test
+    fun `estimate sends route false and requesterAddress when set`() = runTest {
+        server.enqueue(MockResponse().setBody(estimateBody))
+        client.estimate("x", EstimateOptions(route = false, requesterAddress = "daiAddr"))
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"route\":false"), body)
+        assertTrue(body.contains("\"requesterAddress\":\"daiAddr\""), body)
+    }
+
+    @Test
+    fun `estimate requires input but allows a bare skill job`() = runTest {
+        val e = assertFailsWith<DAIException.HttpException> { client.estimate() }
+        assertEquals(400, e.statusCode)
+        server.enqueue(MockResponse().setBody(estimateBody))
+        assertNotNull(client.estimate(options = EstimateOptions(type = "skill", skillId = "web_search")))
+    }
+
+    @Test
+    fun `estimate reports an unavailable currency with a DAI fallback`() = runTest {
+        server.enqueue(MockResponse().setBody("""
+            {"currency": "aiETB", "fees": {"currency": "aiETB",
+              "minimum": {"tokens": 990, "currency": "aiETB", "unavailable": true, "message": "no market"},
+              "recommended": {"tokens": 3604, "currency": "aiETB", "unavailable": true, "message": "no market"},
+              "dai": {"minimum": {"tokens": 990, "raw": 990, "currency": "DAI"},
+                      "recommended": {"tokens": 3604, "raw": 3604, "currency": "DAI"}}}}
+        """.trimIndent()))
+        val est = client.estimate("x", EstimateOptions(currency = "aiETB"))
+        assertTrue(est.fees.recommended.unavailable)
+        assertEquals(null, est.fees.recommended.raw)
+        assertEquals("no market", est.fees.recommended.message)
+        assertEquals(3604L, est.fees.dai?.recommended?.raw)
+    }
+
+    @Test
+    fun `estimate surfaces node errors`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(422).setBody("""{"error":"Dataset not installed","code":"dataset_not_installed"}"""))
+        val e = assertFailsWith<DAIException.HttpException> { client.estimate("x", EstimateOptions(dataset = "ds/missing")) }
+        assertEquals(422, e.statusCode)
+        assertTrue(e.message!!.contains("Dataset not installed"))
+    }
 }

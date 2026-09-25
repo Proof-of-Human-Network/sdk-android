@@ -126,6 +126,54 @@ verify a signature for a key it has never seen.
 
 ---
 
+## Estimating a job's fee
+
+Before paying for a job, ask the node what it will cost — the `eth_estimateGas` of
+DAI. Send the same fields you would submit (prompt, attachments, a skill, MCP tools, a
+dataset). The node sizes the whole pipeline — attachment text, skill and MCP output, dataset
+rows, planner and synthesis calls — and returns the AI tokens it will use, the **minimum fee
+it accepts**, and a **recommended budget**. It is read-only: nothing runs and nothing is paid.
+
+```kotlin
+val est = dai.estimate(
+    "Summarize this report and compare it with the latest news",
+    EstimateOptions(
+        attachments = listOf(ChatAttachment(name = "report.md", content = reportText)), // text is inlined and measured
+        // skillId = "web_search", mcp = listOf("shop__search"), dataset = "some-org/some-dataset",
+        // currency = "aiKGS", maxOutputTokens = 512, route = false,
+    ),
+)
+
+est.fees.minimum.raw        // Long? — μDAI the node will accept, at minimum
+est.fees.recommended.raw    // μDAI to escrow — covers the worst case
+est.tokens.total            // TokenRange(min, max)
+est.breakdown               // what each part contributed, and how sure that is
+
+// runCompute takes DAI; estimate returns μDAI
+val budgetDai = (est.fees.recommended.raw ?: 0L) / 1e9
+```
+
+What comes back:
+
+| Field | Meaning |
+|---|---|
+| `tokens` | `prompt`, `output`, `skillCompute` and `total`, each a `{min, max}` range |
+| `breakdown` | Every contributor, tagged `measured` (counted exactly — prompt, attachment text, dataset rows), `bounded` (capped by the executing code — what a skill fetched, an MCP tool returned) or `assumed` |
+| `calls` | Each model call the pipeline makes (planner, skill answer, synthesis…) |
+| `fees.minimum` | The lowest fee the node accepts — bids below it are rejected (`/job` floors at a fixed amount, chat at the prompt alone) |
+| `fees.recommended` | Covers the pipeline's worst case, never below the minimum. Escrow this |
+| `route` | Which pipeline would run; `predicted: true` means it comes from the deterministic router — the live model-planner may choose differently |
+| `outputCap`, `warnings` | Whether the budget caps output, and anything unusual (images are not billed; job output is capped at 512 tokens) |
+
+Amounts are in raw units of the fee currency (**μDAI** for DAI; 1 DAI = 1e9 μDAI), so divide by
+1e9 for `runCompute`'s `budget`. For a non-DAI `currency` the price is quoted off the live P2P
+book; if nothing quotes that pair the quote says `unavailable` instead of inventing a number,
+and a DAI figure is returned alongside.
+
+Needs a node newer than 0.4.36 (it adds `POST /api/estimate`); older nodes answer 404.
+`estimate` is read-only, so — unlike the other POST methods — it works against remote nodes
+without a `localBaseUrl`.
+
 ## Wallet / blockchain
 
 ```kotlin

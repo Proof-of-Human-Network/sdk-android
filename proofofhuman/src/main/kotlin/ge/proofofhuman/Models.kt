@@ -188,6 +188,153 @@ data class ChatAttachment(
     }
 }
 
+// ── Fee estimation ────────────────────────────────────────────────────────────
+
+/** Inclusive token bounds. `min == max` when the size is measured exactly. */
+data class TokenRange(val min: Long = 0, val max: Long = 0)
+
+/**
+ * What to estimate — the same fields a job or chat request carries. Pass the prompt to
+ * [DAIClient.estimate]; everything else is optional.
+ */
+data class EstimateOptions(
+    /** `"compute"` (default, a paid job), `"chat"` (OpenAI-style [messages]) or `"skill"`. */
+    val type: String? = null,
+    /** OpenAI-style messages for `type = "chat"` (use this OR a prompt). */
+    val messages: List<Map<String, String>>? = null,
+    val history: List<Map<String, String>>? = null,
+    /** Text is inlined and measured; images are not billed by the node. */
+    val attachments: List<ChatAttachment>? = null,
+    val skillId: String? = null,
+    /** MCP tool names (`server__tool`) to run in a cascade. */
+    val mcp: List<String>? = null,
+    /** An installed Hugging Face dataset id — the rows the job would inject are measured. */
+    val dataset: String? = null,
+    /** Fee currency ticker; null for DAI. Non-DAI fees are quoted off the live P2P book. */
+    val currency: String? = null,
+    /** Output tokens to reserve (1..4096, default 512). Jobs cap output at 512 regardless. */
+    val maxOutputTokens: Int? = null,
+    /** `false` skips skill/cascade routing, as on a job. */
+    val route: Boolean = true,
+    val model: String? = null,
+    /** With an address the on-chain public turns the executor merges in are counted too. */
+    val requesterAddress: String? = null,
+    /** The `/job` payload address, if any (it sets the job fee floor). */
+    val address: String? = null,
+) {
+    internal fun toBody(prompt: String?): MutableMap<String, Any?> = mutableMapOf<String, Any?>().also { b ->
+        if (!prompt.isNullOrEmpty()) b["prompt"] = prompt
+        type?.let { b["type"] = it }
+        messages?.takeIf { it.isNotEmpty() }?.let { b["messages"] = it }
+        history?.takeIf { it.isNotEmpty() }?.let { b["history"] = it }
+        attachments?.takeIf { it.isNotEmpty() }?.let { b["attachments"] = it.map { a -> a.toMap() } }
+        skillId?.let { b["skillId"] = it }
+        mcp?.takeIf { it.isNotEmpty() }?.let { b["mcp"] = it }
+        dataset?.let { b["dataset"] = it }
+        currency?.let { b["currency"] = it }
+        maxOutputTokens?.let { b["maxOutputTokens"] = it }
+        if (!route) b["route"] = false
+        model?.let { b["model"] = it }
+        requesterAddress?.let { b["requesterAddress"] = it }
+        address?.let { b["address"] = it }
+    }
+}
+
+/** One contributor to the prompt, tagged by how well its size is known. */
+data class EstimateBreakdownItem(
+    val id: String = "",
+    val kind: String = "",
+    val ref: String? = null,
+    val tokens: TokenRange = TokenRange(),
+    /** `"measured"` (counted exactly), `"bounded"` (capped by the executing code) or `"assumed"`. */
+    val basis: String = "",
+    val note: String? = null,
+)
+
+/** One model call the pipeline makes. */
+data class EstimateCall(
+    val purpose: String = "",
+    val promptTokens: TokenRange = TokenRange(),
+    val outputTokens: TokenRange = TokenRange(),
+    val basis: String? = null,
+    val note: String? = null,
+)
+
+/** A fee in one currency. [raw] is null when [unavailable] (nothing quotes that pair). */
+data class FeeQuote(
+    val tokens: Long = 0,
+    /** Raw units of [currency] (μDAI for DAI). */
+    val raw: Long? = null,
+    val currency: String = "",
+    /** The endpoint whose floor this is (set on `minimum`). */
+    val gate: String? = null,
+    val gasPrice: Double? = null,
+    val source: String? = null,
+    val via: String? = null,
+    val display: Double? = null,
+    val unavailable: Boolean = false,
+    val message: String? = null,
+)
+
+data class EstimateDaiFees(val minimum: FeeQuote = FeeQuote(), val recommended: FeeQuote = FeeQuote())
+
+data class EstimateFees(
+    val currency: String = "DAI",
+    /** The lowest fee the node accepts — bids below it are rejected. */
+    val minimum: FeeQuote = FeeQuote(),
+    /** Covers the pipeline's worst case (never below [minimum]). Escrow this. */
+    val recommended: FeeQuote = FeeQuote(),
+    /** DAI figures, present when [currency] is not DAI. */
+    val dai: EstimateDaiFees? = null,
+)
+
+data class EstimateTask(
+    val id: String = "",
+    val kind: String = "",
+    val skillId: String? = null,
+    val tool: String? = null,
+)
+
+data class EstimateRoute(
+    /** `"direct"`, `"routed-skill"`, `"cascade"` or `"skill-job"`. */
+    val mode: String = "",
+    /** True when the plan comes from the deterministic router; the live model-planner may differ. */
+    val predicted: Boolean = false,
+    val reason: String? = null,
+    val skillId: String? = null,
+    val tasks: List<EstimateTask>? = null,
+)
+
+data class EstimateTokens(
+    val prompt: TokenRange = TokenRange(),
+    val output: TokenRange = TokenRange(),
+    val skillCompute: TokenRange = TokenRange(),
+    val total: TokenRange = TokenRange(),
+)
+
+data class OutputCap(
+    val budgetCapApplies: Boolean = false,
+    val tokens: Long? = null,
+    val note: String? = null,
+)
+
+/** Reply from [DAIClient.estimate] (`POST /api/estimate`). */
+data class EstimateResult(
+    val type: String = "",
+    /** `"job"` (POST /job) or `"chat"` (/v1, /openai/v1) — decides which minimum applies. */
+    val target: String = "",
+    val model: String = "",
+    val currency: String = "DAI",
+    val gasPrice: Double = 0.0,
+    val route: EstimateRoute = EstimateRoute(),
+    val tokens: EstimateTokens = EstimateTokens(),
+    val calls: List<EstimateCall> = emptyList(),
+    val breakdown: List<EstimateBreakdownItem> = emptyList(),
+    val fees: EstimateFees = EstimateFees(),
+    val outputCap: OutputCap = OutputCap(),
+    val warnings: List<String> = emptyList(),
+)
+
 /** Options for free-form chat (`POST /chat/ask`). */
 data class ChatOptions(
     val history: List<Map<String, String>>? = null,

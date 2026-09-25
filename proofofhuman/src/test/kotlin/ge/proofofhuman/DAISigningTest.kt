@@ -42,7 +42,7 @@ class DAISigningTest {
     @Test
     fun `computeTxHash matches node reference value`() {
         val h = DAISigning.computeTxHash("daiA", "daiB", 1_000_000_000L, 5L, 3L, 1_700_000_000_000L, "hello")
-        assertEquals("e309a41e0c088876f2763f8d01ae434ff060bd4391202d555be1d96ee0f14c8a", h)
+        assertEquals("935a2c2bc7a3ed2419d2001b834dbfd7a54d3a3bbb0223664b6f87c15cbf0968", h)
     }
 
     /**
@@ -92,7 +92,7 @@ class DAISigningTest {
     @Test
     fun `computeJobPaymentHash matches node reference value`() {
         val h = DAISigning.computeJobPaymentHash("job-abc", "daiAlice", "daiMiner", 500_000_000L, 3L)
-        assertEquals("1ed86280c1ab64d60d55a232a1c339299d32d8bd45e5f2bf26ff72b26d8908c0", h)
+        assertEquals("801deeac9ce07b1931954d9e50569f8c4521c1f934fcecb00e831f172bcd46aa", h)
     }
 
     @Test

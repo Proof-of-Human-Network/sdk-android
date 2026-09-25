@@ -8,7 +8,7 @@ plugins {
 }
 
 group   = "ge.proofofhuman"
-version = "1.6.0"
+version = "1.7.0"
 
 // ── Dependencies ───────────────────────────────────────────────────────────────
 
@@ -79,7 +79,7 @@ mavenPublishing {
             developer {
                 id.set("proofofhuman")
                 name.set("Decentralized Artificial Intelligence")
-                email.set("support@assetux.com")
+                email.set("support@aist.exchange")
                 url.set("https://github.com/Proof-of-Human-Network")
             }
         }
