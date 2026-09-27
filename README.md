@@ -96,7 +96,7 @@ val ref = dai.submitJob(
     AskOptions(budget = 0.5, walletAddress = "dai1abc...", privateKeyPem = myPrivateKey),
 )
 val status = dai.getJobStatus(ref.jobId)    // lightweight status check
-val result = dai.getJobResult(ref.jobId)    // full result once done
+val result = dai.getJobResult(ref.jobId)    // full result once done; public jobs set replyCipher
 val result = dai.pollJobResult(ref.jobId)   // or poll until it arrives
 ```
 

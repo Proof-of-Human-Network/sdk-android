@@ -417,6 +417,10 @@ data class AskJobResult(
     val nlResponse: String?,
     val skillId: String?,
     val tokensUsed: Int?,
+    /** True when the reply is sealed in replyCipher and output is null. */
+    val encrypted: Boolean? = null,
+    /** profile.replyCipher. Open with the requester X25519 key. */
+    val replyCipher: com.google.gson.JsonElement? = null,
     val error: String?,
 )
 

@@ -541,6 +541,7 @@ class DAIClient(
         }
         val skillId = profile?.get("skillId")?.asString
         val tokensUsed = profile?.get("tokensUsed")?.asInt
+        val replyCipher = profile?.get("replyCipher")?.takeUnless { it.isJsonNull }
         val err = if (raw.has("error") && !raw.get("error").isJsonNull) raw.get("error").asString else null
         return AskJobResult(
             jobId = raw.get("jobId")?.asString ?: jobId,
@@ -549,6 +550,8 @@ class DAIClient(
             nlResponse = nlResponse,
             skillId = skillId,
             tokensUsed = tokensUsed,
+            encrypted = replyCipher != null && output == null,
+            replyCipher = replyCipher,
             error = err,
         )
     }
